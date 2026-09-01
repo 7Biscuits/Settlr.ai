@@ -47,7 +47,7 @@ export function useVoicePlayer() {
         const created = await Audio.Sound.createAsync(
           { uri },
           { shouldPlay: true },
-          (status) => {
+          (status: any) => {
             if (status.isLoaded && status.didJustFinish) {
               if (activeSound) void activeSound.unloadAsync();
               if (soundRef.current === activeSound) soundRef.current = null;

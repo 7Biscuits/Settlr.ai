@@ -1,12 +1,15 @@
 import React from "react";
 import { Tabs } from "expo-router";
 import { Text } from "react-native";
+import { useMessageEvents } from "../../src/features/messages/useMessageEvents";
 
 function TabIcon({ label, color }: { label: string; color: string }) {
   return <Text style={{ color, fontSize: 20 }}>{label}</Text>;
 }
 
 export default function AppTabsLayout() {
+  const { unreadCount } = useMessageEvents();
+
   return (
     <Tabs
       screenOptions={{
@@ -34,6 +37,15 @@ export default function AppTabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="messages/index"
+        options={{
+          title: "Messages",
+          tabBarIcon: ({ color }) => <TabIcon label="💬" color={color} />,
+          tabBarBadge: unreadCount > 0 ? unreadCount : undefined,
+          tabBarBadgeStyle: { backgroundColor: "#3b82f6", color: "#ffffff", fontSize: 10 },
+        }}
+      />
+      <Tabs.Screen
         name="wallet"
         options={{
           title: "Wallet",
@@ -47,11 +59,16 @@ export default function AppTabsLayout() {
           tabBarIcon: ({ color }) => <TabIcon label="✨" color={color} />,
         }}
       />
-      {/* Detail routes live in the app group but are hidden from the tab bar. */}
+
+      {/* Detail & modal routes hidden from tab bar */}
+      <Tabs.Screen name="profile" options={{ href: null }} />
+      <Tabs.Screen name="messages/[id]" options={{ href: null }} />
+      <Tabs.Screen name="messages/new" options={{ href: null }} />
       <Tabs.Screen name="groups/[id]" options={{ href: null }} />
       <Tabs.Screen name="groups/[id]/add-member" options={{ href: null }} />
       <Tabs.Screen name="groups/[id]/add-expense" options={{ href: null }} />
       <Tabs.Screen name="expense/[id]" options={{ href: null }} />
+      <Tabs.Screen name="expense/edit/[id]" options={{ href: null }} />
     </Tabs>
   );
 }

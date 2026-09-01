@@ -13,6 +13,7 @@ import {
 import { getGroup, listGroups } from "../../src/api/groups";
 import { getGroupBalances } from "../../src/api/balances";
 import type {
+  ContactMatchUser,
   DirectedBalance,
   Group,
   GroupMember,
@@ -25,6 +26,7 @@ import { Input } from "../../src/components/Input";
 import { ConfirmSheet } from "../../src/components/ConfirmSheet";
 import { StatusBadge } from "../../src/components/StatusBadge";
 import { EmptyState, ErrorState, LoadingState } from "../../src/components/States";
+import { UserLookupModal } from "../../src/components/UserLookupModal";
 import { formatAmount, formatAbsAmount, parseAmountToMinor } from "../../src/lib/money";
 import { ApiError } from "../../src/api/client";
 
@@ -53,16 +55,17 @@ function minorToInput(amount: number): string {
   return (amount / 100).toFixed(2);
 }
 
-/**
- * Direct wallet controls. These screens only select backend-provided members
- * and balances; the server validates funds, debt, membership and performs the
- * actual financial mutation after the user confirms.
- */
+const PAGE_SIZE = 20;
+
 export default function WalletScreen() {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const [balance, setBalance] = useState(0);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [offset, setOffset] = useState(0);
+  const [hasMoreTransactions, setHasMoreTransactions] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+
   const [groups, setGroups] = useState<Group[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -70,10 +73,16 @@ export default function WalletScreen() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [flow, setFlow] = useState<Flow>(null);
   const [flowLoading, setFlowLoading] = useState(false);
+
+  // Transfer Recipient Selection Mode
+  const [transferMode, setTransferMode] = useState<"search" | "group">("search");
+  const [lookupModalOpen, setLookupModalOpen] = useState(false);
+  const [directRecipient, setDirectRecipient] = useState<ContactMatchUser | null>(null);
+
   const [selectedGroup, setSelectedGroup] = useState<Group | null>(null);
   const [members, setMembers] = useState<GroupMember[]>([]);
   const [debts, setDebts] = useState<DirectedBalance[]>([]);
-  const [recipient, setRecipient] = useState<GroupMember | null>(null);
+  const [groupRecipient, setGroupRecipient] = useState<GroupMember | null>(null);
   const [debt, setDebt] = useState<DirectedBalance | null>(null);
   const [amountText, setAmountText] = useState("");
   const [pendingPayment, setPendingPayment] = useState<PendingPayment | null>(null);
@@ -84,11 +93,13 @@ export default function WalletScreen() {
     try {
       const [wallet, activity, groupResult] = await Promise.all([
         getWalletBalance(),
-        listTransactions(),
+        listTransactions(PAGE_SIZE, 0),
         listGroups(),
       ]);
       setBalance(wallet.balance);
       setTransactions(activity.transactions);
+      setOffset(0);
+      setHasMoreTransactions(activity.transactions.length === PAGE_SIZE);
       setGroups(groupResult.groups);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load wallet");
@@ -99,6 +110,24 @@ export default function WalletScreen() {
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
+  async function loadMoreTransactions() {
+    if (loadingMore || !hasMoreTransactions) return;
+    setLoadingMore(true);
+    try {
+      const nextOffset = offset + PAGE_SIZE;
+      const res = await listTransactions(PAGE_SIZE, nextOffset);
+      if (res.transactions.length < PAGE_SIZE) {
+        setHasMoreTransactions(false);
+      }
+      setTransactions((prev) => [...prev, ...res.transactions]);
+      setOffset(nextOffset);
+    } catch {
+      // Ignore load more failure
+    } finally {
+      setLoadingMore(false);
+    }
+  }
+
   const amount = parseAmountToMinor(amountText);
 
   function resetFlow(next: Flow) {
@@ -107,7 +136,8 @@ export default function WalletScreen() {
     setSelectedGroup(null);
     setMembers([]);
     setDebts([]);
-    setRecipient(null);
+    setGroupRecipient(null);
+    setDirectRecipient(null);
     setDebt(null);
     setAmountText("");
   }
@@ -115,7 +145,7 @@ export default function WalletScreen() {
   async function selectGroup(group: Group) {
     setActionError(null);
     setSelectedGroup(group);
-    setRecipient(null);
+    setGroupRecipient(null);
     setDebt(null);
     setAmountText("");
     setFlowLoading(true);
@@ -125,8 +155,6 @@ export default function WalletScreen() {
         setMembers(detail.members.filter((member) => member.id !== user?.id));
       } else if (flow === "settlement") {
         const result = await getGroupBalances(group.id);
-        // A negative balance comes directly from the backend and means that the
-        // current user owes the other group member.
         setDebts(result.balances.filter((item) => item.netAmount < 0));
       }
     } catch (err) {
@@ -147,16 +175,17 @@ export default function WalletScreen() {
       return;
     }
     if (flow === "transfer") {
-      if (!recipient) {
-        setActionError("Choose a recipient.");
+      const chosenRecipient = transferMode === "search" ? directRecipient : groupRecipient;
+      if (!chosenRecipient) {
+        setActionError("Choose a recipient to transfer funds to.");
         return;
       }
       setPendingPayment({
         type: "transfer",
         amount,
         idempotencyKey: newIdempotencyKey("transfer"),
-        toUserId: recipient.id,
-        recipientName: recipient.name,
+        toUserId: chosenRecipient.id,
+        recipientName: chosenRecipient.name,
       });
       return;
     }
@@ -203,8 +232,6 @@ export default function WalletScreen() {
       resetFlow(null);
       await load();
     } catch (err) {
-      // Preserve the exact request and idempotency key so a retry cannot result
-      // in a duplicate wallet movement.
       setActionError(err instanceof ApiError ? err.message : "Payment action failed");
     } finally {
       setSubmitting(false);
@@ -217,7 +244,7 @@ export default function WalletScreen() {
     ? [
         { label: "Amount", value: formatAmount(pendingPayment.amount) },
         ...(pendingPayment.type === "transfer"
-          ? [{ label: "To", value: pendingPayment.recipientName }]
+          ? [{ label: "Recipient", value: pendingPayment.recipientName }]
           : pendingPayment.type === "settlement"
             ? [
                 { label: "To", value: pendingPayment.recipientName },
@@ -231,7 +258,7 @@ export default function WalletScreen() {
     <ScrollView
       className="flex-1 bg-bg"
       style={{ paddingTop: insets.top }}
-      contentContainerStyle={{ padding: 16, gap: 16 }}
+      contentContainerStyle={{ padding: 16, gap: 16, paddingBottom: 40 }}
       refreshControl={
         <RefreshControl
           refreshing={refreshing}
@@ -265,15 +292,104 @@ export default function WalletScreen() {
 
       {flow ? (
         <Card className="gap-3">
-          <Text className="text-base font-medium text-text">
+          <Text className="text-base font-semibold text-text">
             {flow === "topup" ? "Add demo funds" : flow === "transfer" ? "Transfer funds" : "Settle a group debt"}
           </Text>
 
-          {flow !== "topup" ? (
+          {/* Transfer Flow */}
+          {flow === "transfer" ? (
+            <View className="gap-3">
+              <View className="flex-row gap-2">
+                <View className="flex-1">
+                  <Button
+                    title="Find Any User"
+                    variant={transferMode === "search" ? "primary" : "secondary"}
+                    onPress={() => setTransferMode("search")}
+                  />
+                </View>
+                <View className="flex-1">
+                  <Button
+                    title="Group Members"
+                    variant={transferMode === "group" ? "primary" : "secondary"}
+                    onPress={() => setTransferMode("group")}
+                  />
+                </View>
+              </View>
+
+              {transferMode === "search" ? (
+                <View className="gap-2">
+                  <Text className="text-sm text-muted">Recipient</Text>
+                  {directRecipient ? (
+                    <Card className="flex-row items-center justify-between bg-surface2">
+                      <View className="gap-0.5">
+                        <Text className="text-base font-semibold text-text">
+                          {directRecipient.name}
+                        </Text>
+                        {directRecipient.email ? (
+                          <Text className="text-xs text-muted">
+                            {directRecipient.email}
+                          </Text>
+                        ) : null}
+                      </View>
+                      <Button
+                        title="Change"
+                        variant="secondary"
+                        onPress={() => setLookupModalOpen(true)}
+                      />
+                    </Card>
+                  ) : (
+                    <Button
+                      title="🔍 Find User or Contact"
+                      variant="secondary"
+                      onPress={() => setLookupModalOpen(true)}
+                    />
+                  )}
+                </View>
+              ) : (
+                <View className="gap-2">
+                  <Text className="text-sm text-muted">Choose a group</Text>
+                  {groups.length === 0 ? (
+                    <Text className="text-sm text-muted">No groups available.</Text>
+                  ) : (
+                    groups.map((group) => (
+                      <Button
+                        key={group.id}
+                        title={group.name}
+                        variant={selectedGroup?.id === group.id ? "primary" : "secondary"}
+                        loading={flowLoading && selectedGroup?.id === group.id}
+                        onPress={() => void selectGroup(group)}
+                      />
+                    ))
+                  )}
+
+                  {selectedGroup && !flowLoading ? (
+                    <View className="gap-2 pt-2">
+                      <Text className="text-sm text-muted">Choose group member</Text>
+                      {members.length === 0 ? (
+                        <Text className="text-sm text-muted">This group has no other members to transfer to.</Text>
+                      ) : (
+                        members.map((member) => (
+                          <Button
+                            key={member.id}
+                            title={member.name}
+                            variant={groupRecipient?.id === member.id ? "primary" : "secondary"}
+                            onPress={() => setGroupRecipient(member)}
+                          />
+                        ))
+                      )}
+                    </View>
+                  ) : null}
+                </View>
+              )}
+            </View>
+          ) : null}
+
+          {/* Settlement Flow */}
+          {flow === "settlement" ? (
             <View className="gap-2">
               <Text className="text-sm text-muted">Choose a group</Text>
               {groups.length === 0 ? (
-                <Text className="text-sm text-muted">Create a group before sending or settling funds.</Text>
+                <Text className="text-sm text-muted">Create a group before settling funds.</Text>
               ) : (
                 groups.map((group) => (
                   <Button
@@ -285,41 +401,27 @@ export default function WalletScreen() {
                   />
                 ))
               )}
-            </View>
-          ) : null}
 
-          {flow === "transfer" && selectedGroup && !flowLoading ? (
-            <View className="gap-2">
-              <Text className="text-sm text-muted">Choose a recipient</Text>
-              {members.length === 0 ? (
-                <Text className="text-sm text-muted">This group has no other members to transfer to.</Text>
-              ) : members.map((member) => (
-                <Button
-                  key={member.id}
-                  title={member.name}
-                  variant={recipient?.id === member.id ? "primary" : "secondary"}
-                  onPress={() => setRecipient(member)}
-                />
-              ))}
-            </View>
-          ) : null}
-
-          {flow === "settlement" && selectedGroup && !flowLoading ? (
-            <View className="gap-2">
-              <Text className="text-sm text-muted">Choose an outstanding debt</Text>
-              {debts.length === 0 ? (
-                <Text className="text-sm text-muted">You have no outstanding debt in this group.</Text>
-              ) : debts.map((item) => (
-                <Button
-                  key={item.otherUserId}
-                  title={`${item.otherUserName} · ${formatAbsAmount(item.netAmount)}`}
-                  variant={debt?.otherUserId === item.otherUserId ? "primary" : "secondary"}
-                  onPress={() => {
-                    setDebt(item);
-                    setAmountText(minorToInput(Math.abs(item.netAmount)));
-                  }}
-                />
-              ))}
+              {selectedGroup && !flowLoading ? (
+                <View className="gap-2 pt-2">
+                  <Text className="text-sm text-muted">Choose an outstanding debt</Text>
+                  {debts.length === 0 ? (
+                    <Text className="text-sm text-muted">You have no outstanding debt in this group.</Text>
+                  ) : (
+                    debts.map((item) => (
+                      <Button
+                        key={item.otherUserId}
+                        title={`${item.otherUserName} · ${formatAbsAmount(item.netAmount)}`}
+                        variant={debt?.otherUserId === item.otherUserId ? "primary" : "secondary"}
+                        onPress={() => {
+                          setDebt(item);
+                          setAmountText(minorToInput(Math.abs(item.netAmount)));
+                        }}
+                      />
+                    ))
+                  )}
+                </View>
+              ) : null}
             </View>
           ) : null}
 
@@ -337,32 +439,68 @@ export default function WalletScreen() {
 
       {error ? <ErrorState message={error} onRetry={load} /> : null}
 
+      {/* Paginated Transactions List */}
       <View className="gap-2">
         <Text className="text-lg font-semibold text-text">Transactions</Text>
         {transactions.length === 0 ? (
           <EmptyState title="No transactions yet" subtitle="Top up, transfer, or settle a debt to see activity here." />
-        ) : transactions.map((transaction) => (
-          <Card key={transaction.id}>
-            <View className="flex-row items-center justify-between">
-              <View className="gap-1">
-                <Text className="text-base capitalize text-text">{transaction.type}</Text>
-                <StatusBadge status={transaction.status} />
+        ) : (
+          transactions.map((transaction) => (
+            <Card key={transaction.id}>
+              <View className="flex-row items-center justify-between">
+                <View className="gap-1">
+                  <Text className="text-base capitalize text-text">{transaction.type}</Text>
+                  <StatusBadge status={transaction.status} />
+                </View>
+                <Text className="text-base font-medium text-text">{formatAmount(transaction.amount)}</Text>
               </View>
-              <Text className="text-base font-medium text-text">{formatAmount(transaction.amount)}</Text>
-            </View>
-          </Card>
-        ))}
+            </Card>
+          ))
+        )}
+
+        {hasMoreTransactions && transactions.length > 0 ? (
+          <Button
+            title="Load more transactions"
+            variant="secondary"
+            loading={loadingMore}
+            onPress={loadMoreTransactions}
+          />
+        ) : null}
       </View>
 
+      {/* Confirmation Dialog */}
       <ConfirmSheet
         visible={!!pendingPayment}
-        title={pendingPayment?.type === "settlement" ? "Confirm settlement" : pendingPayment?.type === "transfer" ? "Confirm transfer" : "Confirm top-up"}
-        description="PayPilot will execute this action on the backend. Your balance is updated only after it confirms success."
+        title={
+          pendingPayment?.type === "settlement"
+            ? "Confirm Settlement"
+            : pendingPayment?.type === "transfer"
+              ? "Confirm Transfer"
+              : "Confirm Top-up"
+        }
+        description="PayPilot will execute this transfer securely on the backend."
         rows={confirmationRows}
-        confirmLabel={pendingPayment?.type === "settlement" ? "Settle debt" : pendingPayment?.type === "transfer" ? "Send funds" : "Add funds"}
+        confirmLabel={
+          pendingPayment?.type === "settlement"
+            ? "Settle Debt"
+            : pendingPayment?.type === "transfer"
+              ? "Send Funds"
+              : "Add Funds"
+        }
         loading={submitting}
         onConfirm={submitPayment}
         onCancel={() => setPendingPayment(null)}
+      />
+
+      {/* User Discovery Modal for Transfers */}
+      <UserLookupModal
+        visible={lookupModalOpen}
+        title="Transfer Recipient"
+        onSelect={(u) => {
+          setDirectRecipient(u);
+          setLookupModalOpen(false);
+        }}
+        onCancel={() => setLookupModalOpen(false)}
       />
     </ScrollView>
   );

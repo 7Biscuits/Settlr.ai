@@ -32,14 +32,14 @@ export async function searchContacts(query: string): Promise<DeviceContact[]> {
   });
 
   return data
-    .filter((c) => !!c.name)
-    .map((c) => ({
+    .filter((c: any) => !!c.name)
+    .map((c: any) => ({
       id: c.id ?? c.name ?? Math.random().toString(36),
       name: c.name ?? "Unknown",
       phoneNumbers: (c.phoneNumbers ?? [])
-        .map((p) => p.number ?? "")
+        .map((p: any) => p.number ?? "")
         .filter(Boolean),
-      emails: (c.emails ?? []).map((e) => e.email ?? "").filter(Boolean),
+      emails: (c.emails ?? []).map((e: any) => e.email ?? "").filter(Boolean),
     }));
 }
 

@@ -2,11 +2,12 @@ import React, { useCallback, useMemo, useState } from "react";
 import { ScrollView, Text, View } from "react-native";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { getExpense, updateExpense } from "../../../../src/api/expenses";
 import { getGroup } from "../../../../src/api/groups";
-import { createExpense } from "../../../../src/api/expenses";
 import {
   EXPENSE_CATEGORIES,
   type ExpenseCategory,
+  type ExpenseWithSplits,
   type GroupMember,
   type SplitType,
 } from "../../../../src/api/types";
@@ -28,11 +29,12 @@ import {
 } from "../../../../src/lib/split";
 import { ApiError } from "../../../../src/api/client";
 
-export default function AddExpenseScreen() {
+export default function EditExpenseScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
+  const [expense, setExpense] = useState<ExpenseWithSplits | null>(null);
   const [members, setMembers] = useState<GroupMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -44,7 +46,6 @@ export default function AddExpenseScreen() {
   const [paidBy, setPaidBy] = useState<string | null>(null);
   const [selected, setSelected] = useState<Record<string, boolean>>({});
 
-  // Split Type: "equal" | "custom" | "percentage" | "shares"
   const [splitType, setSplitType] = useState<SplitType>("equal");
   const [customAmounts, setCustomAmounts] = useState<Record<string, string>>({});
   const [percentages, setPercentages] = useState<Record<string, string>>({});
@@ -57,19 +58,40 @@ export default function AddExpenseScreen() {
   const load = useCallback(async () => {
     if (!id) return;
     try {
-      const d = await getGroup(id);
-      setMembers(d.members);
+      const { expense: exp } = await getExpense(id);
+      const groupData = await getGroup(exp.groupId);
+      setExpense(exp);
+      setMembers(groupData.members);
+      setDescription(exp.description);
+      setAmountText((exp.amount / 100).toFixed(2));
+      setCategory((exp.category as ExpenseCategory) ?? "general");
+      setReceiptUrl(exp.receiptUrl ?? null);
+      setPaidBy(exp.paidBy);
+      setSplitType(exp.splitType);
+
       const sel: Record<string, boolean> = {};
-      const initShares: Record<string, string> = {};
-      d.members.forEach((m) => {
-        sel[m.id] = true;
-        initShares[m.id] = "1";
+      const customMap: Record<string, string> = {};
+      const pctMap: Record<string, string> = {};
+      const sharesMap: Record<string, string> = {};
+
+      groupData.members.forEach((m) => {
+        const split = exp.splits.find((s) => s.userId === m.id);
+        if (split) {
+          sel[m.id] = true;
+          customMap[m.id] = (split.amountOwed / 100).toFixed(2);
+          if (split.percentage) pctMap[m.id] = String(split.percentage);
+          if (split.shares) sharesMap[m.id] = String(split.shares);
+        } else {
+          sharesMap[m.id] = "1";
+        }
       });
+
       setSelected(sel);
-      setShares(initShares);
-      setPaidBy(d.members[0]?.id ?? null);
+      setCustomAmounts(customMap);
+      setPercentages(pctMap);
+      setShares(sharesMap);
     } catch (err) {
-      setLoadError(err instanceof Error ? err.message : "Failed to load group");
+      setLoadError(err instanceof Error ? err.message : "Failed to load expense");
     } finally {
       setLoading(false);
     }
@@ -87,7 +109,6 @@ export default function AddExpenseScreen() {
     [members, selected],
   );
 
-  // Split previews
   const equalPreview = useMemo(() => {
     if (!amountMinor || participantIds.length === 0) return null;
     return splitEqualPreview(amountMinor, participantIds.length);
@@ -121,7 +142,7 @@ export default function AddExpenseScreen() {
         sum += v;
       }
       if (sum !== amountMinor)
-        return `Custom amounts (${formatAmount(sum)}) must sum to total amount (${formatAmount(amountMinor)}).`;
+        return `Custom amounts (${formatAmount(sum)}) must sum to total (${formatAmount(amountMinor)}).`;
     }
 
     if (splitType === "percentage") {
@@ -160,12 +181,12 @@ export default function AddExpenseScreen() {
     if (!id || !amountMinor || !paidBy) return;
     setSubmitting(true);
     try {
-      await createExpense(id, {
+      await updateExpense(id, {
         description: description.trim(),
         amount: amountMinor,
         paidBy,
         category,
-        receiptUrl: receiptUrl ?? undefined,
+        receiptUrl: receiptUrl ?? null,
         splitType,
         participants: participantIds.map((pid) => ({
           userId: pid,
@@ -184,13 +205,13 @@ export default function AddExpenseScreen() {
       router.back();
     } catch (err) {
       setConfirmOpen(false);
-      setError(err instanceof ApiError ? err.message : "Failed to create expense");
+      setError(err instanceof ApiError ? err.message : "Failed to update expense");
     } finally {
       setSubmitting(false);
     }
   }
 
-  if (loading) return <LoadingState label="Loading group..." />;
+  if (loading) return <LoadingState label="Loading expense..." />;
   if (loadError) return <ErrorState message={loadError} onRetry={load} />;
 
   return (
@@ -201,7 +222,7 @@ export default function AddExpenseScreen() {
     >
       <View className="flex-row items-center gap-2">
         <Button title="←" variant="ghost" onPress={() => router.back()} />
-        <Text className="text-2xl font-bold text-text">Add Expense</Text>
+        <Text className="text-2xl font-bold text-text">Edit Expense</Text>
       </View>
 
       <Card className="gap-3">
@@ -209,7 +230,7 @@ export default function AddExpenseScreen() {
           label="Description"
           value={description}
           onChangeText={setDescription}
-          placeholder="e.g. Dinner with team"
+          placeholder="e.g. Dinner"
         />
         <Input
           label="Amount"
@@ -308,7 +329,7 @@ export default function AddExpenseScreen() {
                             setPercentages((p) => ({ ...p, [m.id]: t }))
                           }
                           keyboardType="decimal-pad"
-                          placeholder="e.g. 50"
+                          placeholder="50"
                         />
                         {percentagePreview && percentagePreview[index] !== undefined ? (
                           <Text className="text-xs text-muted">
@@ -354,12 +375,12 @@ export default function AddExpenseScreen() {
 
       {error ? <Text className="text-sm text-danger">{error}</Text> : null}
 
-      <Button title="Review Expense" onPress={openConfirm} />
+      <Button title="Save Changes" onPress={openConfirm} />
 
       <ConfirmSheet
         visible={confirmOpen}
-        title="Create Expense?"
-        description="PayPilot will record this expense and update all member balances."
+        title="Update Expense?"
+        description="PayPilot will recalculate member balances on the backend."
         rows={[
           { label: "Description", value: description },
           { label: "Amount", value: amountMinor ? formatAmount(amountMinor) : "-" },
@@ -369,10 +390,8 @@ export default function AddExpenseScreen() {
             value: members.find((m) => m.id === paidBy)?.name ?? "-",
           },
           { label: "Split Type", value: splitType.toUpperCase() },
-          { label: "Participants", value: String(participantIds.length) },
-          { label: "Receipt", value: receiptUrl ? "Attached ✓" : "None" },
         ]}
-        confirmLabel="Create Expense"
+        confirmLabel="Save Changes"
         loading={submitting}
         onConfirm={submit}
         onCancel={() => setConfirmOpen(false)}

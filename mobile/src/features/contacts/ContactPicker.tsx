@@ -85,7 +85,7 @@ export function ContactPicker({
             />
           ) : (
             <ScrollView>
-              {results.map((c) => (
+              {results.map((c: any) => (
                 <Pressable
                   key={c.id}
                   onPress={() => onSelect(c)}

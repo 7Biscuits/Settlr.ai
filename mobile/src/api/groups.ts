@@ -18,6 +18,22 @@ export function createGroup(name: string): Promise<{ group: Group }> {
   });
 }
 
+export function updateGroup(
+  id: string,
+  name: string,
+): Promise<{ group: Group }> {
+  return apiFetch<{ group: Group }>(`/groups/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify({ name }),
+  });
+}
+
+export function deleteGroup(id: string): Promise<void> {
+  return apiFetch<void>(`/groups/${id}`, {
+    method: "DELETE",
+  });
+}
+
 export function getGroup(id: string): Promise<GroupDetail> {
   return apiFetch<GroupDetail>(`/groups/${id}`);
 }

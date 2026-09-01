@@ -10,10 +10,15 @@ export function getWalletBalance(): Promise<{ balance: number }> {
   return apiFetch<{ balance: number }>("/wallet");
 }
 
-export function listTransactions(): Promise<{
+export function listTransactions(
+  limit: number = 20,
+  offset: number = 0,
+): Promise<{
   transactions: Transaction[];
 }> {
-  return apiFetch<{ transactions: Transaction[] }>("/wallet/transactions");
+  return apiFetch<{ transactions: Transaction[] }>(
+    `/wallet/transactions?limit=${limit}&offset=${offset}`,
+  );
 }
 
 export function topUp(

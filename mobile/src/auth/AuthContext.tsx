@@ -6,7 +6,12 @@ import React, {
   useMemo,
   useState,
 } from "react";
-import { login as apiLogin, register as apiRegister, getMe } from "../api/auth";
+import {
+  login as apiLogin,
+  register as apiRegister,
+  logout as apiLogout,
+  getMe,
+} from "../api/auth";
 import { getToken, setToken, clearToken } from "../api/session";
 import { setUnauthorizedHandler } from "../api/client";
 import type { User } from "../api/types";
@@ -17,6 +22,8 @@ interface AuthState {
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, name: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
+  updateUser: (user: User) => void;
+  refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthState | undefined>(undefined);
@@ -26,8 +33,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [initializing, setInitializing] = useState(true);
 
   const signOut = useCallback(async () => {
-    await clearToken();
-    setUser(null);
+    try {
+      await apiLogout();
+    } catch {
+      // Ignored if network fails or already expired; proceed to clear local token
+    } finally {
+      await clearToken();
+      setUser(null);
+    }
+  }, []);
+
+  const refreshUser = useCallback(async () => {
+    try {
+      const { user: updatedUser } = await getMe();
+      setUser(updatedUser);
+    } catch {
+      // Ignore refresh error
+    }
+  }, []);
+
+  const updateUser = useCallback((updatedUser: User) => {
+    setUser(updatedUser);
   }, []);
 
   // Restore session on launch: if a token exists, validate it via /auth/me.
@@ -67,8 +93,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   const value = useMemo(
-    () => ({ user, initializing, signIn, signUp, signOut }),
-    [user, initializing, signIn, signUp, signOut],
+    () => ({
+      user,
+      initializing,
+      signIn,
+      signUp,
+      signOut,
+      updateUser,
+      refreshUser,
+    }),
+    [user, initializing, signIn, signUp, signOut, updateUser, refreshUser],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

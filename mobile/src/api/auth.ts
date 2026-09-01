@@ -19,6 +19,12 @@ export function register(
   });
 }
 
+export function logout(): Promise<{ success: boolean; message: string }> {
+  return apiFetch<{ success: boolean; message: string }>("/auth/logout", {
+    method: "POST",
+  });
+}
+
 export function getMe(): Promise<{ user: User }> {
   return apiFetch<{ user: User }>("/auth/me");
 }

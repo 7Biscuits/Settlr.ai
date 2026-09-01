@@ -1,6 +1,7 @@
 import React, { useRef, useState, useEffect } from 'react';
 import {
   ActivityIndicator,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -10,12 +11,17 @@ import {
   TextInput,
   View,
 } from 'react-native';
+
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Feather, Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
+import * as FileSystem from 'expo-file-system/legacy';
 import { chat, confirm } from '../../api/agent';
 import type { AgentReply, PendingAction } from '../../api/types';
 import { ConfirmSheet } from '../ConfirmSheet';
 import { ApiError } from '../../api/client';
+import { transcribe } from '../../api/voice';
+import { useVoiceRecorder } from '../../features/ai/useVoiceRecorder';
+import { useVoicePlayer } from '../../features/ai/useVoicePlayer';
 
 interface ChatMessage {
   id: string;
@@ -27,7 +33,15 @@ interface ChatMessage {
 interface ChatScreenProps {
   onOpenSettings?: () => void;
   onVoiceRecord?: () => void;
-  isRecording?: boolean;
+}
+
+function mimeTypeForUri(uri: string): string {
+  const lower = uri.toLowerCase();
+  if (lower.endsWith('.wav')) return 'audio/wav';
+  if (lower.endsWith('.mp3')) return 'audio/mpeg';
+  if (lower.endsWith('.webm')) return 'audio/webm';
+  if (lower.endsWith('.mp4')) return 'audio/mp4';
+  return 'audio/m4a';
 }
 
 function formatActionDetails(tool: string, args: unknown): string {
@@ -36,7 +50,7 @@ function formatActionDetails(tool: string, args: unknown): string {
     case 'create_group':
       return `Create group "${a.name}"`;
     case 'invite_to_group':
-      return `Add ${a.query || a.email || a.phone || 'member'} to group`;
+      return `Add ${a.query || a.email || a.phone || (Array.isArray(a.members) ? a.members.join(', ') : 'member')} to group`;
     case 'create_expense': {
       const amountRupees = typeof a.amount === 'number' ? (a.amount / 100).toFixed(2) : '?';
       return `₹${amountRupees} for "${a.description}" split ${a.splitType || 'equal'}`;
@@ -50,33 +64,52 @@ function formatActionDetails(tool: string, args: unknown): string {
   }
 }
 
-export function ChatScreen({ onOpenSettings, onVoiceRecord, isRecording = false }: ChatScreenProps) {
+export function ChatScreen({ onOpenSettings }: ChatScreenProps) {
   const insets = useSafeAreaInsets();
   const topInset = Math.max(insets.top, Platform.OS === 'ios' ? 44 : 24);
   const scrollRef = useRef<ScrollView>(null);
 
+  const voice = useVoiceRecorder();
+  const player = useVoicePlayer();
+
   const [inputText, setInputText] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
   const [conversation, setConversation] = useState<unknown[] | undefined>();
 
   // Sensitive action confirmation state
   const [pending, setPending] = useState<{
     action: PendingAction;
     content: string;
+    speakReply: boolean;
   } | null>(null);
   const [confirming, setConfirming] = useState(false);
 
   useEffect(() => {
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
-  }, [messages, loading]);
+  }, [messages, loading, transcribing]);
 
-  const applyReply = (reply: AgentReply) => {
+  useEffect(() => {
+    const showSub = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      () => {
+        setTimeout(() => {
+          scrollRef.current?.scrollToEnd({ animated: true });
+        }, 100);
+      },
+    );
+    return () => showSub.remove();
+  }, []);
+
+
+  const applyReply = async (reply: AgentReply, speakReply = false) => {
     setConversation(reply.messages);
     if (reply.type === 'confirmation_required' && reply.pendingAction) {
       setPending({
         action: reply.pendingAction,
         content: reply.content,
+        speakReply,
       });
       if (reply.content) {
         setMessages((prev) => [
@@ -98,9 +131,18 @@ export function ChatScreen({ onOpenSettings, onVoiceRecord, isRecording = false 
         },
       ]);
     }
+
+    if (speakReply && reply.content) {
+      try {
+        await player.speak(reply.content);
+      } catch {
+        // Audio playback error is handled by useVoicePlayer
+      }
+    }
   };
 
-  const handleSend = async (customText?: string) => {
+
+  const handleSend = async (customText?: string, speakReply = false) => {
     const text = (customText ?? inputText).trim();
     if (!text || loading) return;
 
@@ -115,7 +157,7 @@ export function ChatScreen({ onOpenSettings, onVoiceRecord, isRecording = false 
 
     try {
       const res = await chat(text, conversation);
-      applyReply(res);
+      await applyReply(res, speakReply);
     } catch (err) {
       const errMsg =
         err instanceof ApiError
@@ -132,18 +174,79 @@ export function ChatScreen({ onOpenSettings, onVoiceRecord, isRecording = false 
           isError: true,
         },
       ]);
+      if (speakReply) {
+        await player.speak("I encountered an issue processing your request.");
+      }
     } finally {
       setLoading(false);
     }
   };
 
+  const handleMicToggle = async () => {
+    if (player.speaking) {
+      await player.stop();
+      return;
+    }
+
+    if (voice.recording) {
+      setTranscribing(true);
+      const uri = await voice.stop();
+      if (!uri) {
+        setTranscribing(false);
+        return;
+      }
+      try {
+        const audioBase64 = await FileSystem.readAsStringAsync(uri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        const mimeType = mimeTypeForUri(uri);
+        const { text } = await transcribe(audioBase64, mimeType);
+        const trimmed = text.trim();
+        setTranscribing(false);
+        if (!trimmed) {
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: Date.now().toString(),
+              sender: 'assistant',
+              text: "🎤 I couldn't hear any audio. Please try speaking again.",
+            },
+          ]);
+          return;
+        }
+        await handleSend(trimmed, true);
+      } catch (err) {
+        setTranscribing(false);
+        const errMsg =
+          err instanceof ApiError
+            ? err.message
+            : err instanceof Error
+            ? err.message
+            : "Voice transcription unavailable. Please check DEEPGRAM_API_KEY in backend/.env.";
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: Date.now().toString(),
+            sender: 'assistant',
+            text: `⚠️ ${errMsg}`,
+            isError: true,
+          },
+        ]);
+      }
+    } else {
+      await voice.start();
+    }
+  };
+
+
   const handleConfirmAction = async () => {
     if (!pending) return;
     setConfirming(true);
+    const speakReply = pending.speakReply;
     try {
       const reply = await confirm(pending.action.proposalId);
       setPending(null);
-      applyReply(reply);
+      await applyReply(reply, speakReply);
     } catch (err) {
       setPending(null);
       const errMsg =
@@ -169,7 +272,8 @@ export function ChatScreen({ onOpenSettings, onVoiceRecord, isRecording = false 
   return (
     <View style={styles.safeArea}>
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
         style={styles.keyboardView}>
         {/* Background Watermark */}
         <View style={styles.watermarkContainer} pointerEvents="none">
@@ -178,7 +282,14 @@ export function ChatScreen({ onOpenSettings, onVoiceRecord, isRecording = false 
 
         {/* Top Header Row */}
         <View style={[styles.headerRow, { paddingTop: topInset + 4 }]}>
-          <View style={styles.headerSpacer} />
+          <View style={styles.headerStatus}>
+            {player.speaking ? (
+              <Pressable onPress={() => player.stop()} style={styles.speakingIndicator}>
+                <Ionicons name="volume-high" size={18} color="#2738F5" />
+                <Text style={styles.speakingText}>Playing voice… (tap to stop)</Text>
+              </Pressable>
+            ) : null}
+          </View>
           <View style={styles.headerActions}>
             <Pressable onPress={onOpenSettings} style={styles.iconButton}>
               <Ionicons name="person-circle-outline" size={32} color="#0F172A" />
@@ -190,14 +301,17 @@ export function ChatScreen({ onOpenSettings, onVoiceRecord, isRecording = false 
         <ScrollView
           ref={scrollRef}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
           contentContainerStyle={styles.chatScrollContent}>
+
           {/* Welcome Card & Suggested Prompts when empty */}
           {messages.length === 0 ? (
             <View style={styles.welcomeContainer}>
               <View style={styles.overviewCard}>
                 <Text style={styles.welcomeHeading}>👋 Hi! I'm Settlr AI</Text>
                 <Text style={styles.welcomeSubheading}>
-                  Ask me about your group balances, who owes you money, or let me record expenses and settle debts for you!
+                  Ask me questions or tap the microphone to speak! I can track balances, split bills, add friends, and settle debts automatically.
                 </Text>
               </View>
 
@@ -243,56 +357,108 @@ export function ChatScreen({ onOpenSettings, onVoiceRecord, isRecording = false 
                       ]}>
                       {msg.text}
                     </Text>
+                    {!msg.isError && (
+                      <Pressable
+                        onPress={() => player.speak(msg.text)}
+                        style={styles.listenAgainButton}>
+                        <Ionicons name="volume-medium-outline" size={16} color="#64748B" />
+                        <Text style={styles.listenAgainText}>Listen</Text>
+                      </Pressable>
+                    )}
                   </View>
                 )}
               </View>
             ))
           )}
 
+          {transcribing ? (
+            <View style={styles.cleoMessageContainer}>
+              <View style={[styles.overviewCard, styles.loadingCard]}>
+                <ActivityIndicator size="small" color="#2738F5" />
+                <Text style={styles.loadingText}>Transcribing your voice with Deepgram STT…</Text>
+              </View>
+            </View>
+          ) : null}
+
           {loading ? (
             <View style={styles.cleoMessageContainer}>
               <View style={[styles.overviewCard, styles.loadingCard]}>
                 <ActivityIndicator size="small" color="#2738F5" />
-                <Text style={styles.loadingText}>Thinking…</Text>
+                <Text style={styles.loadingText}>Thinking & executing tools…</Text>
               </View>
             </View>
           ) : null}
         </ScrollView>
 
-        {/* Floating Chat Input & Mic Bar */}
+        {/* Voice recording banner if active */}
+        {voice.recording ? (
+          <View style={styles.recordingBanner}>
+            <View style={styles.recordingDot} />
+            <Text style={styles.recordingBannerText}>Listening… Tap the mic button to finish</Text>
+          </View>
+        ) : null}
+
+        {/* Floating Chat Input & Single Mic/Action Bar */}
         <View style={styles.inputBarWrapper}>
           <View style={styles.inputContainer}>
             <TextInput
               value={inputText}
               onChangeText={setInputText}
               onSubmitEditing={() => handleSend()}
-              placeholder="Ask Settlr AI..."
+              placeholder={
+                voice.recording
+                  ? "Listening to your voice…"
+                  : player.speaking
+                  ? "Settlr is speaking… (tap mic to stop)"
+                  : "Ask Settlr AI..."
+              }
               placeholderTextColor="#94A3B8"
+              editable={!voice.recording}
               style={styles.textInput}
             />
-            {inputText.length > 0 ? (
-              <Pressable onPress={() => handleSend()} style={styles.sendIconWrapper}>
-                <Ionicons name="arrow-up-circle" size={32} color="#2738F5" />
-              </Pressable>
-            ) : (
-              <Pressable onPress={onVoiceRecord} style={styles.sendIconWrapper}>
-                <Ionicons
-                  name={isRecording ? 'mic' : 'mic-outline'}
-                  size={24}
-                  color={isRecording ? '#EF4444' : '#2738F5'}
-                />
+            {inputText.length > 0 && (
+              <Pressable
+                hitSlop={8}
+                onPress={() => setInputText("")}
+                style={styles.clearTextButton}>
+                <Ionicons name="close-circle" size={20} color="#94A3B8" />
               </Pressable>
             )}
           </View>
 
-          <Pressable onPress={onVoiceRecord} style={styles.homeActionButton}>
-            <Ionicons
-              name={isRecording ? 'radio' : 'sparkles'}
-              size={22}
-              color={isRecording ? '#EF4444' : '#2738F5'}
-            />
-          </Pressable>
+          {/* Single Action Button: Send when text typed, Mic/Stop when empty, or Stop TTS when speaking */}
+          {inputText.trim().length > 0 ? (
+            <Pressable
+              onPress={() => handleSend()}
+              style={[styles.homeActionButton, styles.homeActionSend]}>
+              <Ionicons name="arrow-up" size={24} color="#FFFFFF" />
+            </Pressable>
+          ) : (
+            <Pressable
+              onPress={handleMicToggle}
+              style={[
+                styles.homeActionButton,
+                voice.recording
+                  ? styles.homeActionActive
+                  : player.speaking
+                  ? styles.homeActionSpeaking
+                  : styles.homeActionDefault,
+              ]}>
+              <Ionicons
+                name={
+                  voice.recording
+                    ? "stop"
+                    : player.speaking
+                    ? "volume-mute"
+                    : "mic"
+                }
+                size={22}
+                color="#FFFFFF"
+              />
+            </Pressable>
+          )}
         </View>
+
 
         {/* Sensitive Action Confirmation Sheet */}
         <ConfirmSheet
@@ -365,8 +531,23 @@ const styles = StyleSheet.create({
     paddingBottom: 4,
     zIndex: 10,
   },
-  headerSpacer: {
-    width: 32,
+  headerStatus: {
+    flex: 1,
+  },
+  speakingIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#EEF2FF',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    alignSelf: 'flex-start',
+  },
+  speakingText: {
+    fontSize: 12,
+    color: '#2738F5',
+    fontWeight: '600',
   },
   headerActions: {
     flexDirection: 'row',
@@ -433,6 +614,20 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
   },
+  listenAgainButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 8,
+    alignSelf: 'flex-start',
+    paddingVertical: 2,
+    paddingHorizontal: 4,
+  },
+  listenAgainText: {
+    fontSize: 12,
+    color: '#64748B',
+    fontWeight: '600',
+  },
   loadingCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -492,6 +687,29 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
+  recordingBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#FEE2E2',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    marginHorizontal: 14,
+    marginBottom: 6,
+    borderRadius: 12,
+  },
+  recordingDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#EF4444',
+  },
+  recordingBannerText: {
+    color: '#B91C1C',
+    fontSize: 13,
+    fontWeight: '700',
+  },
   inputBarWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -520,20 +738,34 @@ const styles = StyleSheet.create({
     color: '#0F172A',
     height: '100%',
   },
-  sendIconWrapper: {
-    marginLeft: 6,
+  clearTextButton: {
+    padding: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   homeActionButton: {
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
+    shadowOpacity: 0.15,
     shadowRadius: 5,
-    elevation: 2,
+    elevation: 3,
+  },
+  homeActionDefault: {
+    backgroundColor: '#2738F5',
+  },
+  homeActionSend: {
+    backgroundColor: '#2738F5',
+  },
+  homeActionActive: {
+    backgroundColor: '#EF4444',
+  },
+  homeActionSpeaking: {
+    backgroundColor: '#059669',
   },
 });
+

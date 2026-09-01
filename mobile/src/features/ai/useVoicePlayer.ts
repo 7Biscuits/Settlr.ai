@@ -1,89 +1,71 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
+import { createAudioPlayer, setAudioModeAsync } from "expo-audio";
 import { synthesize } from "../../api/voice";
 
-function getAudioModule() {
-  try {
-    const av = require("expo-av");
-    return av.Audio || av.default?.Audio || null;
-  } catch {
-    return null;
-  }
-}
-
 /**
- * Fetches Deepgram TTS audio through the backend, writes only a short-lived
- * cache file, and plays it locally. API keys never enter the mobile bundle.
+ * Fetches Deepgram TTS audio through the backend, writes a short-lived
+ * cache file, and plays it locally using expo-audio.
  */
 export function useVoicePlayer() {
-  const soundRef = useRef<any>(null);
+  const playerRef = useRef<any>(null);
   const fileRef = useRef<string | null>(null);
   const [speaking, setSpeaking] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const stop = useCallback(async () => {
-    const sound = soundRef.current;
+    const player = playerRef.current;
     const file = fileRef.current;
-    soundRef.current = null;
+    playerRef.current = null;
     fileRef.current = null;
+
     try {
-      if (sound) await sound.unloadAsync();
-    } catch {
-      // Ignore unload error
-    }
+      if (player) {
+        player.pause?.();
+        player.remove?.();
+      }
+    } catch {}
+
     try {
       if (file) await FileSystem.deleteAsync(file, { idempotent: true });
-    } catch {
-      // Ignore file delete error
-    }
+    } catch {}
+
     setSpeaking(false);
   }, []);
 
   const speak = useCallback(
     async (text: string) => {
-      if (!text.trim()) return;
+      if (!text || !text.trim()) return;
       setError(null);
-      setSpeaking(true);
       try {
-        const Audio = getAudioModule();
-        if (!Audio) {
-          setError("Voice playback is not supported in this runtime environment.");
-          setSpeaking(false);
-          return;
-        }
-
         await stop();
         setSpeaking(true);
+
         const { audioBase64 } = await synthesize(text);
-        const directory = (FileSystem as any).cacheDirectory;
-        if (!directory) throw new Error("No cache directory is available for audio playback");
+        const directory = FileSystem.cacheDirectory;
+        if (!directory) throw new Error("No cache directory available for audio playback");
         const uri = `${directory}paypilot-tts-${Date.now()}.mp3`;
-        await (FileSystem as any).writeAsStringAsync(uri, audioBase64, {
-          encoding: (FileSystem as any).EncodingType?.Base64 || "base64",
+        await FileSystem.writeAsStringAsync(uri, audioBase64, {
+          encoding: FileSystem.EncodingType.Base64,
         });
         fileRef.current = uri;
-        await Audio.setAudioModeAsync({
-          allowsRecordingIOS: false,
-          playsInSilentModeIOS: true,
+
+        await setAudioModeAsync({
+          allowsRecording: false,
+          playsInSilentMode: true,
         });
-        let activeSound: any = null;
-        const created = await Audio.Sound.createAsync(
-          { uri },
-          { shouldPlay: true },
-          (status: any) => {
-            if (status.isLoaded && status.didJustFinish) {
-              if (activeSound) void activeSound.unloadAsync();
-              if (soundRef.current === activeSound) soundRef.current = null;
-              if (fileRef.current === uri) {
-                fileRef.current = null;
-                void FileSystem.deleteAsync(uri, { idempotent: true });
-              }
-              setSpeaking(false);
-            }
-          },
-        );
-        activeSound = created.sound;
-        soundRef.current = activeSound;
+
+        const player = createAudioPlayer(uri);
+        playerRef.current = player;
+
+        (player as any)?.addListener?.("playbackStatusUpdate", (status: any) => {
+          if (status?.didJustFinish || (status?.isLoaded && !status?.playing && status?.currentTime >= (status?.duration || 0))) {
+            void stop();
+          }
+        });
+
+        player.play();
+
       } catch (err) {
         setSpeaking(false);
         setError(err instanceof Error ? err.message : "Unable to play voice reply");

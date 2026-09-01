@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import {
+  KeyboardAvoidingView,
   Platform,
   Pressable,
   ScrollView,
@@ -8,6 +9,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather, Ionicons } from "@expo/vector-icons";
@@ -71,12 +73,18 @@ export default function NewMessageScreen() {
 
   return (
     <View style={styles.safeArea}>
-      <ScrollView
-        bounces={false}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}>
-        {/* Header */}
-        <View style={[styles.topSection, { paddingTop: topInset + 4 }]}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
+        style={{ flex: 1 }}>
+        <ScrollView
+          bounces={false}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={styles.scrollContent}>
+          {/* Header */}
+          <View style={[styles.topSection, { paddingTop: topInset + 4 }]}>
+
           <View style={styles.headerRow}>
             <Pressable hitSlop={14} onPress={() => router.back()} style={styles.iconButton}>
               <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
@@ -96,7 +104,8 @@ export default function NewMessageScreen() {
                 setQuery(t);
                 if (error) setError(null);
               }}
-              placeholder="e.g. Alex or alex@settlr.ai"
+              placeholder="e.g. Shahil or shahil@settlr.ai"
+
               placeholderTextColor="#94A3B8"
               autoCapitalize="none"
               style={styles.textInput}
@@ -147,8 +156,10 @@ export default function NewMessageScreen() {
           ) : null}
         </View>
       </ScrollView>
-    </View>
-  );
+    </KeyboardAvoidingView>
+  </View>
+);
+
 }
 
 const styles = StyleSheet.create({

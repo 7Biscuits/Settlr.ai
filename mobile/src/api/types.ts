@@ -115,14 +115,24 @@ export interface Transaction {
   createdAt: string;
 }
 
+export interface ActivityItem {
+  id: string;
+  type: string;
+  amount: number;
+  status: string;
+  createdAt: string;
+}
+
 export interface DashboardSummary {
   totalOwed: number;
   totalOwing: number;
   walletBalance: number;
   balances: DirectedBalance[];
   groups: Group[];
-  recentActivity: Transaction[];
+  recentActivity: ActivityItem[];
+  rawTransactions?: Transaction[];
 }
+
 
 export interface PendingAction {
   proposalId: string;

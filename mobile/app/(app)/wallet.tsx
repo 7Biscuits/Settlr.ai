@@ -301,9 +301,6 @@ export default function WalletScreen() {
           <View style={styles.balanceWrapper}>
             <Text style={styles.balanceLabel}>AVAILABLE BALANCE</Text>
             <Text style={styles.balanceText}>{formatAmount(balance)}</Text>
-            <View style={styles.vipBadge}>
-              <Text style={styles.vipBadgeText}>⚡ Instant 0% Fee P2P Active</Text>
-            </View>
           </View>
 
           {/* Action Pills */}
@@ -346,9 +343,10 @@ export default function WalletScreen() {
                 {flow === "topup"
                   ? "Top Up Wallet Balance"
                   : flow === "transfer"
-                  ? "Direct P2P Transfer"
+                  ? "Direct Transfer"
                   : "Settle Group Debt"}
               </Text>
+
 
               {flow === "transfer" ? (
                 <View style={styles.flowBody}>
@@ -460,8 +458,9 @@ export default function WalletScreen() {
 
               {/* Amount Input */}
               <View style={styles.amountInputRow}>
-                <Text style={styles.amountPrefix}>$</Text>
+                <Text style={styles.amountPrefix}>₹</Text>
                 <TextInput
+
                   value={amountText}
                   onChangeText={setAmountText}
                   keyboardType="decimal-pad"

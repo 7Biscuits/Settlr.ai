@@ -25,14 +25,21 @@ export default function LoginScreen() {
 
   const handleRegister = async (data: SignUpData) => {
     const fullName = `${data.firstName} ${data.lastName}`.trim();
-    await signUp(data.email, fullName, data.password || "password123");
+    if (!data.password) {
+      throw new Error("Password is required");
+    }
+    await signUp(data.email, fullName, data.password, data.phone, data.bio);
     setFlowMode("success");
   };
 
   const handleLoginSubmit = async (email: string, password?: string) => {
-    await signIn(email, password || "password123");
+    if (!password) {
+      throw new Error("Password is required");
+    }
+    await signIn(email, password);
     router.replace("/(app)/dashboard");
   };
+
 
   return (
     <View style={styles.container}>

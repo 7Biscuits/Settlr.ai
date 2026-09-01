@@ -24,8 +24,9 @@ export interface SignUpData {
   firstName: string;
   lastName: string;
   email: string;
-  phone?: string;
   password?: string;
+  phone?: string;
+  bio?: string;
   referral?: string;
 }
 
@@ -57,22 +58,28 @@ export function SignUpFlow({
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
-  // Form State
+  // Form State - Starts completely blank (no pre-entered data)
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [phone, setPhone] = useState('');
-  const [password, setPassword] = useState('password123');
+  const [bio, setBio] = useState('');
   const [selectedReferral, setSelectedReferral] = useState(REFERRAL_SOURCES[0]);
 
   // Picker State
   const [pickerOpen, setPickerOpen] = useState(false);
 
-  const totalSteps = 4;
+  const totalSteps = 5;
 
   const isStepValid = () => {
     if (mode === 'login') {
-      return email.trim().includes('@') && email.trim().includes('.');
+      return (
+        email.trim().includes('@') &&
+        email.trim().includes('.') &&
+        password.trim().length > 0
+      );
     }
     switch (currentStep) {
       case 1:
@@ -80,8 +87,10 @@ export function SignUpFlow({
       case 2:
         return email.trim().includes('@') && email.trim().includes('.');
       case 3:
-        return phone.trim().length >= 4 || true; // optional
+        return password.trim().length >= 8;
       case 4:
+        return true; // phone & bio are optional
+      case 5:
         return selectedReferral.length > 0;
       default:
         return false;
@@ -111,8 +120,9 @@ export function SignUpFlow({
           firstName: firstName.trim(),
           lastName: lastName.trim(),
           email: email.trim(),
-          phone: phone.trim() || undefined,
           password,
+          phone: phone.trim() || undefined,
+          bio: bio.trim() || undefined,
           referral: selectedReferral,
         });
       } catch (err: any) {
@@ -144,7 +154,7 @@ export function SignUpFlow({
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.keyboardView}>
         <View style={styles.sheetContainer}>
-          {/* Top Navigation Row: Back Arrow & Close Button */}
+          {/* Top Navigation Row: Back Arrow, Mode Switch & Close Button */}
           <View style={styles.topNavRow}>
             <Pressable hitSlop={14} onPress={handleBack} style={styles.navButton}>
               <Ionicons name="arrow-back" size={24} color="#000000" />
@@ -170,7 +180,7 @@ export function SignUpFlow({
           {/* Segmented Progress Bar (Only in SignUp Mode) */}
           {mode === 'signup' && (
             <View style={styles.segmentedProgressRow}>
-              {[1, 2, 3, 4].map((step) => {
+              {[1, 2, 3, 4, 5].map((step) => {
                 const isFilled = step <= currentStep;
                 return (
                   <View
@@ -204,7 +214,7 @@ export function SignUpFlow({
                 exiting={FadeOut.duration(150)}>
                 <Text style={styles.stepTitle}>WELCOME BACK</Text>
                 <Text style={styles.stepSubtitle}>
-                  Enter your email to access your Settlr wallet & group balances
+                  Enter your email and password to access your Settlr wallet & balances
                 </Text>
 
                 <View style={styles.inputsGroup}>
@@ -218,14 +228,28 @@ export function SignUpFlow({
                     style={styles.textInput}
                   />
 
-                  <TextInput
-                    placeholder="Password"
-                    placeholderTextColor="#94A3B8"
-                    value={password}
-                    onChangeText={setPassword}
-                    secureTextEntry
-                    style={styles.textInput}
-                  />
+                  {/* Password Input with Show/Hide Toggle */}
+                  <View style={styles.passwordInputWrapper}>
+                    <TextInput
+                      placeholder="Password"
+                      placeholderTextColor="#94A3B8"
+                      value={password}
+                      onChangeText={setPassword}
+                      secureTextEntry={!showPassword}
+                      autoCapitalize="none"
+                      style={styles.passwordTextInput}
+                    />
+                    <Pressable
+                      hitSlop={10}
+                      onPress={() => setShowPassword((prev) => !prev)}
+                      style={styles.eyeButton}>
+                      <Ionicons
+                        name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                        size={22}
+                        color="#64748B"
+                      />
+                    </Pressable>
+                  </View>
                 </View>
               </Animated.View>
             )}
@@ -236,9 +260,9 @@ export function SignUpFlow({
                 key="step-1"
                 entering={FadeIn.duration(200)}
                 exiting={FadeOut.duration(150)}>
-                <Text style={styles.stepTitle}>NAME</Text>
+                <Text style={styles.stepTitle}>YOUR NAME</Text>
                 <Text style={styles.stepSubtitle}>
-                  Add your details so friends can recognize you in splits
+                  Add your details so friends can recognize you in group splits
                 </Text>
 
                 <View style={styles.inputsGroup}>
@@ -267,14 +291,14 @@ export function SignUpFlow({
                 key="step-2"
                 entering={FadeIn.duration(200)}
                 exiting={FadeOut.duration(150)}>
-                <Text style={styles.stepTitle}>EMAIL</Text>
+                <Text style={styles.stepTitle}>EMAIL ADDRESS</Text>
                 <Text style={styles.stepSubtitle}>
-                  Enter your email for instant transaction receipts & login
+                  Used for instant balance alerts, split invites, and account security
                 </Text>
 
                 <View style={styles.inputsGroup}>
                   <TextInput
-                    placeholder="Email address"
+                    placeholder="e.g. yourname@example.com"
                     placeholderTextColor="#94A3B8"
                     value={email}
                     onChangeText={setEmail}
@@ -286,21 +310,63 @@ export function SignUpFlow({
               </Animated.View>
             )}
 
-            {/* SIGNUP MODE: Step 3 PHONE (OPTIONAL) */}
+            {/* SIGNUP MODE: Step 3 PASSWORD */}
             {mode === 'signup' && currentStep === 3 && (
               <Animated.View
                 key="step-3"
                 entering={FadeIn.duration(200)}
                 exiting={FadeOut.duration(150)}>
-                <Text style={styles.stepTitle}>PHONE NUMBER</Text>
+                <Text style={styles.stepTitle}>SECURE PASSWORD</Text>
                 <Text style={styles.stepSubtitle}>
-                  Optional • For fast contact lookup and instant settlement alerts
+                  Create a password with at least 8 characters
+                </Text>
+
+                <View style={styles.inputsGroup}>
+                  <View style={styles.passwordInputWrapper}>
+                    <TextInput
+                      placeholder="Password (minimum 8 characters)"
+                      placeholderTextColor="#94A3B8"
+                      value={password}
+                      onChangeText={setPassword}
+                      secureTextEntry={!showPassword}
+                      autoCapitalize="none"
+                      style={styles.passwordTextInput}
+                    />
+                    <Pressable
+                      hitSlop={10}
+                      onPress={() => setShowPassword((prev) => !prev)}
+                      style={styles.eyeButton}>
+                      <Ionicons
+                        name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                        size={22}
+                        color="#64748B"
+                      />
+                    </Pressable>
+                  </View>
+                  <Text style={styles.helperText}>
+                    {password.length < 8
+                      ? `Must be at least 8 characters (${8 - password.length} more needed)`
+                      : '✓ Password meets requirements'}
+                  </Text>
+                </View>
+              </Animated.View>
+            )}
+
+            {/* SIGNUP MODE: Step 4 PHONE & BIO (OPTIONAL) */}
+            {mode === 'signup' && currentStep === 4 && (
+              <Animated.View
+                key="step-4"
+                entering={FadeIn.duration(200)}
+                exiting={FadeOut.duration(150)}>
+                <Text style={styles.stepTitle}>PHONE & BIO</Text>
+                <Text style={styles.stepSubtitle}>
+                  Optional • For quick contact lookups and your group profile
                 </Text>
 
                 <View style={styles.inputsGroup}>
                   <View style={styles.iconInputWrapper}>
                     <TextInput
-                      placeholder="+1 (555) 000-0000"
+                      placeholder="+91 98765 00000"
                       placeholderTextColor="#94A3B8"
                       value={phone}
                       onChangeText={setPhone}
@@ -309,22 +375,32 @@ export function SignUpFlow({
                     />
                     <Feather name="phone" size={20} color="#0F172A" />
                   </View>
+
+                  <TextInput
+                    placeholder="Short bio (e.g. Flatmate & coffee lover ☕)"
+                    placeholderTextColor="#94A3B8"
+                    value={bio}
+                    onChangeText={setBio}
+                    maxLength={120}
+                    style={styles.textInput}
+                  />
+
                   <Text style={styles.helperText}>
-                    Optional. You can skip or fill anytime later.
+                    Both fields are optional. You can update them in Settings later.
                   </Text>
                 </View>
               </Animated.View>
             )}
 
-            {/* SIGNUP MODE: Step 4 REFERRAL */}
-            {mode === 'signup' && currentStep === 4 && (
+            {/* SIGNUP MODE: Step 5 REFERRAL / DISCOVERY */}
+            {mode === 'signup' && currentStep === 5 && (
               <Animated.View
-                key="step-4"
+                key="step-5"
                 entering={FadeIn.duration(200)}
                 exiting={FadeOut.duration(150)}>
                 <Text style={styles.stepTitle}>DISCOVERY</Text>
                 <Text style={styles.stepSubtitle}>
-                  Where did you hear about Settlr AI?
+                  Where did you hear about Settlr?
                 </Text>
 
                 <View style={styles.inputsGroup}>
@@ -346,16 +422,20 @@ export function SignUpFlow({
             {/* Privacy Link */}
             <Pressable style={styles.dataExplainedRow}>
               <Ionicons
-                name="information-circle-outline"
+                name="shield-checkmark-outline"
                 size={20}
                 color="#161A36"
               />
-              <Text style={styles.dataExplainedText}>Your privacy & security</Text>
+              <Text style={styles.dataExplainedText}>Settlr Secure & Private</Text>
             </Pressable>
           </ScrollView>
 
           {/* Bottom Action Button */}
-          <View style={[styles.bottomBar, { paddingBottom: Math.max(insets.bottom, Platform.OS === 'android' ? 24 : 12) }]}>
+          <View
+            style={[
+              styles.bottomBar,
+              { paddingBottom: Math.max(insets.bottom, Platform.OS === 'android' ? 24 : 12) },
+            ]}>
             <Pressable
               onPress={isStepValid() && !loading ? handleNext : undefined}
               style={[
@@ -372,7 +452,11 @@ export function SignUpFlow({
                       ? styles.nextButtonTextActive
                       : styles.nextButtonTextDisabled,
                   ]}>
-                  {mode === 'login' ? 'Sign In 👉' : currentStep === totalSteps ? 'Complete 👉' : 'Next 👉'}
+                  {mode === 'login'
+                    ? 'Sign In 👉'
+                    : currentStep === totalSteps
+                    ? 'Create Account 🎉'
+                    : 'Next 👉'}
                 </Text>
               )}
             </Pressable>
@@ -536,6 +620,29 @@ const styles = StyleSheet.create({
     color: '#0F172A',
     fontWeight: '500',
   },
+  passwordInputWrapper: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    borderRadius: 14,
+    height: 56,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  passwordTextInput: {
+    flex: 1,
+    fontSize: 16,
+    color: '#0F172A',
+    fontWeight: '500',
+    height: '100%',
+  },
+  eyeButton: {
+    padding: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   iconInputWrapper: {
     backgroundColor: '#FFFFFF',
     borderWidth: 1.5,
@@ -557,7 +664,7 @@ const styles = StyleSheet.create({
     color: '#64748B',
     fontSize: 13,
     fontWeight: '500',
-    marginTop: 6,
+    marginTop: 2,
     marginLeft: 4,
   },
   floatingDropdown: {
@@ -633,18 +740,6 @@ const styles = StyleSheet.create({
   },
   nextButtonTextDisabled: {
     color: '#FFFFFF',
-  },
-  homeIndicatorWrapper: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingTop: 8,
-    paddingBottom: 4,
-  },
-  homeIndicator: {
-    width: 134,
-    height: 5,
-    borderRadius: 3,
-    backgroundColor: '#000000',
   },
   modalOverlay: {
     flex: 1,

@@ -5,7 +5,7 @@ import { env } from "../config/env.js";
 import { synthesizeSpeech, transcribeAudio } from "../services/voiceService.js";
 import { createRateLimiter } from "../middleware/rateLimit.js";
 
-const MAX_AUDIO_BASE64_CHARS = 700_000;
+const MAX_AUDIO_BASE64_CHARS = 10_000_000;
 
 const transcribeSchema = z.object({
   // Base64-encoded audio payload (no data: prefix). Kept as JSON so the mobile
@@ -14,18 +14,16 @@ const transcribeSchema = z.object({
     .string()
     .min(1)
     .max(MAX_AUDIO_BASE64_CHARS)
-    .regex(/^[A-Za-z0-9+/]+={0,2}$/, "audioBase64 must be valid base64"),
-  // Optional MIME type hint, e.g. "audio/m4a" (iOS) or "audio/webm".
-  mimeType: z
-    .enum(["audio/m4a", "audio/mp4", "audio/mpeg", "audio/wav", "audio/webm"])
-    .optional(),
+    .transform((val) => val.trim().replace(/\s+/g, "")),
+  // Optional MIME type hint, e.g. "audio/m4a" (iOS), "audio/mp4" (Android), "audio/webm", etc.
+  mimeType: z.string().min(1).max(64).optional(),
 });
 
 const ttsSchema = z.object({
-  text: z.string().trim().min(1).max(1_000),
+  text: z.string().trim().min(1).max(2_000),
 });
 
-const voiceRateLimit = createRateLimiter({ max: 10, windowMs: 60_000 });
+const voiceRateLimit = createRateLimiter({ max: 60, windowMs: 60_000 });
 
 /**
  * Server-side voice proxy. The Deepgram key is kept on the
@@ -39,26 +37,43 @@ export async function voiceRoutes(app: FastifyInstance): Promise<void> {
   app.addHook("preHandler", authenticate);
 
   app.post("/voice/transcribe", { preHandler: voiceRateLimit }, async (request, reply) => {
-    // Validate the request shape first so malformed payloads get a 400
-    // regardless of provider configuration.
     const { audioBase64, mimeType } = transcribeSchema.parse(request.body);
     if (!env.DEEPGRAM_API_KEY) {
       return reply.code(503).send({
         error: "STT not configured",
-        message: "DEEPGRAM_API_KEY is not set",
+        message: "DEEPGRAM_API_KEY is not set in backend/.env",
       });
     }
-    const text = await transcribeAudio(audioBase64, mimeType);
-    return reply.send({ text });
+    try {
+      const text = await transcribeAudio(audioBase64, mimeType);
+      return reply.send({ text });
+    } catch (err) {
+      request.log.error(err, "Deepgram STT failed");
+      return reply.code(502).send({
+        error: "STT Failed",
+        message: err instanceof Error ? err.message : "Failed to transcribe audio",
+      });
+    }
   });
 
   app.post("/voice/tts", { preHandler: voiceRateLimit }, async (request, reply) => {
-    if (!env.DEEPGRAM_API_KEY) {
-      return reply
-        .code(503)
-        .send({ error: "TTS not configured", message: "DEEPGRAM_API_KEY is not set" });
-    }
     const { text } = ttsSchema.parse(request.body);
-    return reply.send(await synthesizeSpeech(text));
+    if (!env.DEEPGRAM_API_KEY) {
+      return reply.code(503).send({
+        error: "TTS not configured",
+        message: "DEEPGRAM_API_KEY is not set in backend/.env",
+      });
+    }
+    try {
+      const result = await synthesizeSpeech(text);
+      return reply.send(result);
+    } catch (err) {
+      request.log.error(err, "Deepgram TTS failed");
+      return reply.code(502).send({
+        error: "TTS Failed",
+        message: err instanceof Error ? err.message : "Failed to synthesize speech",
+      });
+    }
   });
 }
+

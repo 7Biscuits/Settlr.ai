@@ -44,7 +44,7 @@ const SLIDES: SlideData[] = [
   {
     id: '3',
     title: 'ZERO-FEE WALLET\n& DIRECT TRANSFERS',
-    subtitle: 'Fast P2P settlements with 0 transaction fees',
+    subtitle: 'Fast direct settlements with 0 transaction fees',
     illustration: <CreditCardSvg />,
   },
   {
@@ -114,11 +114,21 @@ export function OnboardingScreen({ onSignUp, onLogin }: OnboardingScreenProps) {
             setContainerWidth(w);
           }
         }}>
-        {/* Top Settlr Logo Pill */}
-        <View style={[styles.logoWrapper, { paddingTop: topInset + 6 }]}>
+        {/* Top Header Row: Settlr Logo Pill on Left & Sign Up Button on Right */}
+        <View style={[styles.topHeaderRow, { paddingTop: topInset + 6 }]}>
           <View style={styles.cleoLogoPill}>
             <Text style={styles.cleoLogoText}>SETTLR</Text>
           </View>
+
+          <Pressable
+            onPress={onSignUp}
+            hitSlop={8}
+            style={({ pressed }) => [
+              styles.topSignUpButton,
+              pressed && styles.buttonPressed,
+            ]}>
+            <Text style={styles.topSignUpText}>Sign Up</Text>
+          </Pressable>
         </View>
 
         {/* Natively Swipeable Carousel View */}
@@ -191,7 +201,7 @@ export function OnboardingScreen({ onSignUp, onLogin }: OnboardingScreenProps) {
               styles.signUpButton,
               pressed && styles.buttonPressed,
             ]}>
-            <Text style={styles.signUpButtonText}>CREATE NEW ACCOUNT</Text>
+            <Text style={styles.signUpButtonText}>SIGN UP • CREATE ACCOUNT</Text>
           </Pressable>
 
           <Pressable
@@ -218,8 +228,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     justifyContent: 'space-between',
   },
-  logoWrapper: {
+  topHeaderRow: {
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
     paddingBottom: 6,
   },
   cleoLogoPill: {
@@ -238,6 +251,20 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '900',
     letterSpacing: 0.5,
+  },
+  topSignUpButton: {
+    backgroundColor: '#EEF2FF',
+    paddingHorizontal: 16,
+    paddingVertical: 7,
+    borderRadius: 12,
+    borderWidth: 1.2,
+    borderColor: '#C7D2FE',
+  },
+  topSignUpText: {
+    color: '#2738F5',
+    fontSize: 14.5,
+    fontWeight: '800',
+    letterSpacing: 0.2,
   },
   carouselContainer: {
     flex: 1,
@@ -317,6 +344,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#2738F5',
     borderRadius: 14,
     height: 54,
+    width: '100%',
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#2738F5',
@@ -330,6 +358,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '800',
     letterSpacing: 0.5,
+    textAlign: 'center',
   },
   loginButton: {
     backgroundColor: '#FFFFFF',
@@ -337,6 +366,7 @@ const styles = StyleSheet.create({
     borderColor: '#161A36',
     borderRadius: 14,
     height: 52,
+    width: '100%',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -344,6 +374,8 @@ const styles = StyleSheet.create({
     color: '#161A36',
     fontSize: 15.5,
     fontWeight: '700',
+    textAlign: 'center',
+    alignSelf: 'center',
   },
   buttonPressed: {
     opacity: 0.85,

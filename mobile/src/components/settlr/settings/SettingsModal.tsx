@@ -20,6 +20,7 @@ import {
   MoneyBagIcon,
   SkullSparkleIcon,
 } from '../illustrations/TransactionIcons';
+import { formatAmount } from '../../../lib/money';
 
 interface SettingsModalProps {
   visible: boolean;
@@ -28,6 +29,7 @@ interface SettingsModalProps {
   userName?: string;
   userEmail?: string;
   userPhone?: string;
+  walletBalance?: number;
   backendOnline?: boolean;
 }
 
@@ -35,11 +37,13 @@ export function SettingsModal({
   visible,
   onClose,
   onLogout,
-  userName = 'ALEX JOHNSON',
-  userEmail = 'alex.johnson@settlr.ai',
+  userName = 'User',
+  userEmail = '',
   userPhone,
+  walletBalance = 0,
   backendOnline = true,
 }: SettingsModalProps) {
+
   const insets = useSafeAreaInsets();
   const topInset = Math.max(insets.top, Platform.OS === 'ios' ? 44 : 24);
 
@@ -234,29 +238,16 @@ export function SettingsModal({
                   </View>
                   <View style={styles.accountInfo}>
                     <Text style={styles.accountName}>Settlr Primary Wallet</Text>
-                    <Text style={styles.accountSubtitle}>Zero-fee Instant P2P</Text>
+                    <Text style={styles.accountSubtitle}>Available Balance</Text>
                   </View>
                   <View style={styles.balanceContainer}>
-                    <Text style={styles.accountBalance}>$1,274.87</Text>
+                    <Text style={styles.accountBalance}>{formatAmount(walletBalance)}</Text>
                     <Text style={styles.statusConnected}>● Active</Text>
-                  </View>
-                </View>
-
-                <View style={styles.accountRow}>
-                  <View style={styles.accountIconBox}>
-                    <SkullSparkleIcon />
-                  </View>
-                  <View style={styles.accountInfo}>
-                    <Text style={styles.accountName}>Settlr Group Vault</Text>
-                    <Text style={styles.accountSubtitle}>Shared Emergency Fund</Text>
-                  </View>
-                  <View style={styles.balanceContainer}>
-                    <Text style={styles.accountBalance}>$850.00</Text>
-                    <Text style={styles.statusActive}>Locked 🔒</Text>
                   </View>
                 </View>
               </View>
             </View>
+
 
             {/* 3. Security & Toggles */}
             <View style={styles.sectionWrapper}>

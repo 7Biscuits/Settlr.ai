@@ -12,12 +12,16 @@ export function register(
   email: string,
   name: string,
   password: string,
+  phone?: string,
+  bio?: string,
+  avatarUrl?: string,
 ): Promise<AuthResponse> {
   return apiFetch<AuthResponse>("/auth/register", {
     method: "POST",
-    body: JSON.stringify({ email, name, password }),
+    body: JSON.stringify({ email, name, password, phone, bio, avatarUrl }),
   });
 }
+
 
 export function logout(): Promise<{ success: boolean; message: string }> {
   return apiFetch<{ success: boolean; message: string }>("/auth/logout", {

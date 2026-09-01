@@ -1,7 +1,8 @@
-import React, { useCallback, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   FlatList,
   Image,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -10,6 +11,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather, Ionicons } from "@expo/vector-icons";
@@ -107,6 +109,18 @@ export default function DirectMessageChatScreen() {
     }
   }
 
+  useEffect(() => {
+    const showSub = Keyboard.addListener(
+      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow",
+      () => {
+        setTimeout(() => {
+          flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+        }, 100);
+      },
+    );
+    return () => showSub.remove();
+  }, []);
+
   if (loading) return <LoadingState label="Loading conversation..." />;
 
   const partner = conversation?.otherParticipant;
@@ -114,8 +128,10 @@ export default function DirectMessageChatScreen() {
   return (
     <View style={styles.safeArea}>
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
         style={styles.keyboardView}>
+
         {/* Top Header */}
         <View style={[styles.topHeader, { paddingTop: topInset + 4 }]}>
           <Pressable hitSlop={14} onPress={() => router.back()} style={styles.iconButton}>
@@ -147,9 +163,12 @@ export default function DirectMessageChatScreen() {
           inverted
           data={messages}
           keyExtractor={(item) => item.id}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
           style={styles.messagesList}
           contentContainerStyle={styles.messagesContent}
           renderItem={({ item }) => {
+
             const isMine = item.senderId === user?.id;
             return (
               <View

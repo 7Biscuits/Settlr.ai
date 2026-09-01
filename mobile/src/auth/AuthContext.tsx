@@ -20,7 +20,14 @@ interface AuthState {
   user: User | null;
   initializing: boolean;
   signIn: (email: string, password: string) => Promise<void>;
-  signUp: (email: string, name: string, password: string) => Promise<void>;
+  signUp: (
+    email: string,
+    name: string,
+    password: string,
+    phone?: string,
+    bio?: string,
+    avatarUrl?: string,
+  ) => Promise<void>;
   signOut: () => Promise<void>;
   updateUser: (user: User) => void;
   refreshUser: () => Promise<void>;
@@ -84,13 +91,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signUp = useCallback(
-    async (email: string, name: string, password: string) => {
-      const res = await apiRegister(email, name, password);
+    async (
+      email: string,
+      name: string,
+      password: string,
+      phone?: string,
+      bio?: string,
+      avatarUrl?: string,
+    ) => {
+      const res = await apiRegister(email, name, password, phone, bio, avatarUrl);
       await setToken(res.token);
       setUser(res.user);
     },
     [],
   );
+
 
   const value = useMemo(
     () => ({

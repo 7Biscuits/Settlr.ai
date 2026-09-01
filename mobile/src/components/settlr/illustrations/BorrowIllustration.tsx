@@ -88,7 +88,8 @@ export function BorrowIllustration({ advanceAmount = 250, feeAmount = 0 }: Borro
             </View>
           </View>
 
-          <Text style={styles.categoryLabel}>P2P Send</Text>
+          <Text style={styles.categoryLabel}>Direct Send</Text>
+
           <Text style={styles.amountValue}>${Math.round(advanceAmount)}</Text>
         </View>
 

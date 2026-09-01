@@ -132,10 +132,10 @@ export default function DashboardScreen() {
               <SpendScreen
                 onOpenSettings={openSettings}
                 onOpenTopUp={() => setActiveTab("wallet")}
-                balance={summary?.walletBalance ?? 127487}
-                totalOwed={summary?.totalOwed ?? 32600}
-                totalOwing={summary?.totalOwing ?? 18800}
-                recentActivity={summary?.recentActivity}
+                balance={summary?.walletBalance ?? 0}
+                totalOwed={summary?.totalOwed ?? 0}
+                totalOwing={summary?.totalOwing ?? 0}
+                recentActivity={summary?.recentActivity ?? []}
               />
             </View>
 
@@ -146,10 +146,19 @@ export default function DashboardScreen() {
                 onCreateGroup={() => router.push("/(app)/groups")}
                 onSettleDebt={() => setActiveTab("wallet")}
                 netBalance={
-                  (summary?.totalOwed ?? 32600) - (summary?.totalOwing ?? 18800)
+                  ((summary?.totalOwed ?? 0) - (summary?.totalOwing ?? 0)) / 100
                 }
-                totalOwed={(summary?.totalOwed ?? 32600) / 100}
-                totalOwing={(summary?.totalOwing ?? 18800) / 100}
+                totalOwed={(summary?.totalOwed ?? 0) / 100}
+                totalOwing={(summary?.totalOwing ?? 0) / 100}
+                groupDebts={
+                  summary?.balances?.map((b) => ({
+                    id: b.otherUserId,
+                    groupName: "Group Split",
+                    userOwes: b.netAmount < 0,
+                    amount: Math.abs(b.netAmount) / 100,
+                    otherMember: b.otherUserName,
+                  })) ?? []
+                }
               />
             </View>
 
@@ -166,7 +175,7 @@ export default function DashboardScreen() {
               <MessagesIndexScreen />
             </View>
 
-            {/* 5. Wallet & P2P Settlements */}
+            {/* 5. Wallet & Direct Settlements */}
             <View style={{ width: containerWidth, height: "100%" }}>
               <WalletScreen />
             </View>
@@ -190,13 +199,16 @@ export default function DashboardScreen() {
           await signOut();
           router.replace("/(auth)/login");
         }}
-        userName={user?.name ?? "Alex Johnson"}
-        userEmail={user?.email ?? "alex.johnson@settlr.ai"}
+        userName={user?.name ?? "User"}
+        userEmail={user?.email ?? ""}
         userPhone={user?.phone ?? undefined}
+        walletBalance={summary?.walletBalance ?? 0}
         backendOnline={health?.status === "ok"}
       />
 
-      {/* User Lookup Modal for P2P Transfers */}
+
+      {/* User Lookup Modal for Direct Transfers */}
+
       <UserLookupModal
         visible={showLookupModal}
         onCancel={() => setShowLookupModal(false)}

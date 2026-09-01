@@ -1,98 +1,50 @@
 ================================================================================
-                    PAYPILOT — SEED USERS CREDENTIALS & PROFILES
+                    SETTLR — SEED USERS CREDENTIALS & PROFILES
 ================================================================================
-All 8 seed accounts have been provisioned in Supabase PostgreSQL database.
-Default Password for all seed accounts: Password123!
-Initial Wallet Balance: $1,000.00 USD (100,000 minor units)
+All 4 primary seed accounts have been provisioned in Supabase PostgreSQL database.
+Default Password for all 4 seed accounts: password123
+Demo Currency: INR (₹) — integer minor units (paise)
 ================================================================================
 
-1. ALICE JOHNSON
+1. SHAHIL
 --------------------------------------------------------------------------------
-User ID:      2ed30f06-9516-406d-8f9b-1233355a284b
-Name:         Alice Johnson
-Email:        alice@paypilot.app
-Phone:        +15550100001
-Password:     Password123!
-Wallet:       $1,000.00 (100,000 cents)
-Bio:          Product designer & avid traveler. Loves weekend getaways and shared dinners.
-Avatar:       https://images.unsplash.com/photo-1494790108377-be9c29b29330
+Name:         Shahil
+Email:        shahil@settlr.ai
+Phone:        +919876500001
+Password:     password123
+Wallet:       ₹75,000.00
+Bio:          Settlr co-founder & tech explorer 🚀
+Avatar:       https://api.dicebear.com/7.x/bottts/svg?seed=Shahil
 
-2. BOB SMITH
+2. RUDRANSH
 --------------------------------------------------------------------------------
-User ID:      2ea1f69f-1c7e-47b0-8f03-9ba5faaa60cc
-Name:         Bob Smith
-Email:        bob@paypilot.app
-Phone:        +15550100002
-Password:     Password123!
-Wallet:       $1,000.00 (100,000 cents)
-Bio:          Software engineer and foodie. Always ready to split group brunch bills.
-Avatar:       https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d
+Name:         Rudransh
+Email:        rudransh@settlr.ai
+Phone:        +919876500002
+Password:     password123
+Wallet:       ₹85,000.00
+Bio:          AI Engineer & systems builder 🤖
+Avatar:       https://api.dicebear.com/7.x/bottts/svg?seed=Rudransh
 
-3. CHARLIE DAVIS
+3. RUPAM
 --------------------------------------------------------------------------------
-User ID:      c79d3690-75e2-4990-b04d-83e09398c57b
-Name:         Charlie Davis
-Email:        charlie@paypilot.app
-Phone:        +15550100003
-Password:     Password123!
-Wallet:       $1,000.00 (100,000 cents)
-Bio:          Photographer & road-trip enthusiast. Tracking road trip gas and Airbnb stays.
-Avatar:       https://images.unsplash.com/photo-1500648767791-00dcc994a43e
+Name:         Rupam
+Email:        rupam@settlr.ai
+Phone:        +919876500003
+Password:     password123
+Wallet:       ₹60,000.00
+Bio:          Product designer & coffee aficionado ☕
+Avatar:       https://api.dicebear.com/7.x/bottts/svg?seed=Rupam
 
-4. DIANA PRINCE
+4. KAMAL
 --------------------------------------------------------------------------------
-User ID:      6a1431da-5a00-449c-b7bb-8609731b8757
-Name:         Diana Prince
-Email:        diana@paypilot.app
-Phone:        +15550100004
-Password:     Password123!
-Wallet:       $1,000.00 (100,000 cents)
-Bio:          Marketing lead & fitness lover. Organizes group workouts and smoothies.
-Avatar:       https://images.unsplash.com/photo-1534528741775-53994a69daeb
-
-5. ETHAN HUNT
---------------------------------------------------------------------------------
-User ID:      db5ac05d-d456-4137-8082-7be3a00b7452
-Name:         Ethan Hunt
-Email:        ethan@paypilot.app
-Phone:        +15550100005
-Password:     Password123!
-Wallet:       $1,000.00 (100,000 cents)
-Bio:          Financial analyst. Passionate about debt simplification and equal splits.
-Avatar:       https://images.unsplash.com/photo-1522075469751-3a6694fb2f61
-
-6. FIONA GALLAGHER
---------------------------------------------------------------------------------
-User ID:      62a3a13f-55a7-444c-9339-13c446bf57c7
-Name:         Fiona Gallagher
-Email:        fiona@paypilot.app
-Phone:        +15550100006
-Password:     Password123!
-Wallet:       $1,000.00 (100,000 cents)
-Bio:          Event planner. Keeps household utilities and shared subscriptions organized.
-Avatar:       https://images.unsplash.com/photo-1517841905240-472988babdf9
-
-7. GEORGE CLARK
---------------------------------------------------------------------------------
-User ID:      c7eb6b9e-79ce-49e5-a450-a9c9ada39e0e
-Name:         George Clark
-Email:        george@paypilot.app
-Phone:        +15550100007
-Password:     Password123!
-Wallet:       $1,000.00 (100,000 cents)
-Bio:          Music producer & vinyl collector. Splits festival tickets and studio rentals.
-Avatar:       https://images.unsplash.com/photo-1539571696357-5a69c17a67c6
-
-8. HANNAH ABBOTT
---------------------------------------------------------------------------------
-User ID:      0aab7619-7f6e-48cf-9ae-c3237fdcc865
-Name:         Hannah Abbott
-Email:        hannah@paypilot.app
-Phone:        +15550100008
-Password:     Password123!
-Wallet:       $1,000.00 (100,000 cents)
-Bio:          Writer & coffee shop explorer. Splits coworking spaces and book club supplies.
-Avatar:       https://images.unsplash.com/photo-1524504388940-b1c1722653e1
+Name:         Kamal
+Email:        kamal@settlr.ai
+Phone:        +919876500004
+Password:     password123
+Wallet:       ₹50,000.00
+Bio:          Operations lead & road trip planner 🏖️
+Avatar:       https://api.dicebear.com/7.x/bottts/svg?seed=Kamal
 
 ================================================================================
                         QUICK LOGIN & API TEST GUIDE
@@ -102,9 +54,9 @@ POST /auth/login
 Content-Type: application/json
 
 {
-  "email": "alice@paypilot.app",
-  "password": "Password123!"
+  "email": "shahil@settlr.ai",
+  "password": "password123"
 }
 
-Response returns the JWT bearer token for testing API routes & the mobile app.
+Response returns the JWT bearer token for mobile app & agent interactions.
 ================================================================================

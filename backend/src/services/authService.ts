@@ -44,9 +44,13 @@ export async function registerUser(input: {
   name: string;
   password: string;
   phone?: string;
+  bio?: string;
+  avatarUrl?: string;
 }): Promise<PublicUser> {
   const email = input.email.toLowerCase().trim();
   const phone = normalizePhone(input.phone);
+  const bio = input.bio?.trim() || null;
+  const avatarUrl = input.avatarUrl?.trim() || null;
 
   const passwordHash = await hashPassword(input.password);
   try {
@@ -58,8 +62,11 @@ export async function registerUser(input: {
           name: input.name.trim(),
           passwordHash,
           phone,
+          bio,
+          avatarUrl,
         })
         .returning();
+
 
       if (!created) {
         throw new Error("User creation did not return a row");

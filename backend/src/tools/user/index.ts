@@ -25,18 +25,20 @@ export const lookupUserByContactTool: ToolDefinition = {
     phone: z.string().optional(),
     email: z.string().optional(),
     query: z.string().optional(),
+    name: z.string().optional(),
+    user: z.string().optional(),
   }),
   sensitive: false,
   async execute(input, _ctx) {
-    const { phone, email, query } = input as {
-      phone?: string;
-      email?: string;
-      query?: string;
-    };
+    const raw = (input || {}) as Record<string, unknown>;
+    const phone = raw.phone as string | undefined;
+    const email = raw.email as string | undefined;
+    const query = (raw.query || raw.name || raw.user) as string | undefined;
+
     if (!phone && !email && !query) {
       return {
         success: false,
-        error: "At least one contact parameter (phone, email, or query) must be provided",
+        error: "At least one contact parameter (phone, email, or query/name) must be provided",
       };
     }
     const user = await lookupUserByContact({ phone, email, query });
@@ -46,6 +48,7 @@ export const lookupUserByContactTool: ToolDefinition = {
     return { success: true, data: { user } };
   },
 };
+
 
 export const updateProfileTool: ToolDefinition = {
   name: "update_my_profile",

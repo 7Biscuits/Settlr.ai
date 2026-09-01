@@ -1,5 +1,6 @@
-import React, { useEffect } from 'react';
-import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { Keyboard, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -213,6 +214,26 @@ export function BottomTabs({
 }: BottomTabsProps) {
   const insets = useSafeAreaInsets();
   const bottomInset = Math.max(insets.bottom, Platform.OS === 'android' ? 14 : 6);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+
+  useEffect(() => {
+    const showSub = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      () => setKeyboardVisible(true),
+    );
+    const hideSub = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => setKeyboardVisible(false),
+    );
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
+  if (keyboardVisible) {
+    return null;
+  }
 
   const tabs: TabItem[] = [
     { key: 'home', label: 'Home' },
@@ -224,6 +245,7 @@ export function BottomTabs({
 
   return (
     <View style={[styles.container, { paddingBottom: bottomInset }]}>
+
       <View style={styles.tabsRow}>
         {tabs.map((tab) => (
           <AnimatedTabItem

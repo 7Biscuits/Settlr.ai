@@ -17,12 +17,7 @@ import {
   SkullSparkleIcon,
 } from './illustrations/TransactionIcons';
 import { formatAmount } from '../../lib/money';
-
-interface ActivityItem {
-  id: string;
-  type: string;
-  amount: number;
-}
+import type { ActivityItem } from '../../api/types';
 
 interface SpendScreenProps {
   onOpenSettings?: () => void;
@@ -38,29 +33,23 @@ interface SpendScreenProps {
 export function SpendScreen({
   onOpenSettings,
   onOpenTopUp,
-  onOpenScan,
-  onOpenAssistant,
-  balance = 127487, // minor units or major
-  totalOwed = 32600,
-  totalOwing = 18800,
+  onOpenScan: _onOpenScan,
+  onOpenAssistant: _onOpenAssistant,
+  balance = 0,
+  totalOwed = 0,
+  totalOwing = 0,
   recentActivity = [],
 }: SpendScreenProps) {
   const insets = useSafeAreaInsets();
   const topInset = Math.max(insets.top, Platform.OS === 'ios' ? 44 : 24);
   const [expanded, setExpanded] = useState(false);
 
-  // Normalize balance to major units for planet card if in minor units
+  // Normalize balance to major units for planet card (if in minor units / paise)
   const majorBalance = balance > 10000 ? balance / 100 : balance;
 
-  const defaultActivities = [
-    { id: '1', type: 'Dinner split • Goa Trip', amount: 45000 },
-    { id: '2', type: 'Wallet Top Up', amount: 150000 },
-    { id: '3', type: 'Settled to Rahul', amount: -6800 },
-    { id: '4', type: 'Swiggy Munchies split', amount: -32000 },
-  ];
-
-  const activities = recentActivity.length > 0 ? recentActivity : defaultActivities;
-  const displayedActivities = expanded ? activities : activities.slice(0, 3);
+  const displayedActivities = expanded
+    ? recentActivity
+    : recentActivity.slice(0, 3);
 
   return (
     <View style={styles.safeArea}>
@@ -117,50 +106,65 @@ export function SpendScreen({
           {/* Header Row */}
           <View style={styles.transactionsHeader}>
             <Text style={styles.transactionsTitle}>RECENT SETTLR ACTIVITY</Text>
-            <Pressable
-              onPress={() => setExpanded((prev) => !prev)}
-              style={styles.editButton}>
-              <Feather name={expanded ? "minimize-2" : "maximize-2"} size={17} color="#0F172A" />
-            </Pressable>
+            {recentActivity.length > 3 && (
+              <Pressable
+                onPress={() => setExpanded((prev) => !prev)}
+                style={styles.editButton}>
+                <Feather
+                  name={expanded ? "minimize-2" : "maximize-2"}
+                  size={17}
+                  color="#0F172A"
+                />
+              </Pressable>
+            )}
           </View>
 
           {/* Transaction List */}
-          <View style={styles.transactionList}>
-            {displayedActivities.map((item) => {
-              const isPositive = item.amount > 0;
-              return (
-                <View key={item.id} style={styles.transactionRow}>
-                  {/* Left Icon & Name */}
-                  <View style={styles.transactionLeft}>
-                    {item.type.toLowerCase().includes('top') ? (
-                      <BankBuildingIcon />
-                    ) : item.type.toLowerCase().includes('settl') ? (
-                      <SkullSparkleIcon />
-                    ) : (
-                      <MoneyBagIcon />
-                    )}
-                    <Text style={styles.transactionName} numberOfLines={1}>
-                      {item.type}
-                    </Text>
-                  </View>
+          {recentActivity.length === 0 ? (
+            <View style={styles.emptyActivityBox}>
+              <Text style={styles.emptyActivityTitle}>No recent activity yet</Text>
+              <Text style={styles.emptyActivitySub}>
+                Add funds, transfer to friends, or split an expense to see activity here.
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.transactionList}>
+              {displayedActivities.map((item) => {
+                const isPositive = item.amount > 0;
+                return (
+                  <View key={item.id} style={styles.transactionRow}>
+                    {/* Left Icon & Name */}
+                    <View style={styles.transactionLeft}>
+                      {item.type.toLowerCase().includes('top') ? (
+                        <BankBuildingIcon />
+                      ) : item.type.toLowerCase().includes('settl') ? (
+                        <SkullSparkleIcon />
+                      ) : (
+                        <MoneyBagIcon />
+                      )}
+                      <Text style={styles.transactionName} numberOfLines={1}>
+                        {item.type}
+                      </Text>
+                    </View>
 
-                  {/* Right Amount */}
-                  <View style={styles.amountContainer}>
-                    <Text
-                      style={[
-                        styles.transactionAmount,
-                        isPositive ? styles.positiveAmount : styles.neutralAmount,
-                      ]}>
-                      {formatAmount(item.amount)}
-                    </Text>
+                    {/* Right Amount */}
+                    <View style={styles.amountContainer}>
+                      <Text
+                        style={[
+                          styles.transactionAmount,
+                          isPositive ? styles.positiveAmount : styles.neutralAmount,
+                        ]}>
+                        {formatAmount(Math.abs(item.amount))}
+                      </Text>
+                    </View>
                   </View>
-                </View>
-              );
-            })}
-          </View>
+                );
+              })}
+            </View>
+          )}
 
           {/* View More Link */}
-          {activities.length > 3 && (
+          {recentActivity.length > 3 && (
             <Pressable
               onPress={() => setExpanded((prev) => !prev)}
               style={styles.viewMoreButton}>
@@ -292,6 +296,23 @@ const styles = StyleSheet.create({
   },
   transactionList: {
     gap: 16,
+  },
+  emptyActivityBox: {
+    alignItems: 'center',
+    paddingVertical: 20,
+    paddingHorizontal: 12,
+  },
+  emptyActivityTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  emptyActivitySub: {
+    fontSize: 13,
+    color: '#64748B',
+    textAlign: 'center',
+    marginTop: 4,
+    lineHeight: 18,
   },
   transactionRow: {
     flexDirection: 'row',

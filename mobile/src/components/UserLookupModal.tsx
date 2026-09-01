@@ -148,7 +148,7 @@ export function UserLookupModal({
               <View className="gap-3">
                 <Input
                   label="Search by Name, Email, or Phone"
-                  placeholder="e.g. Alex or alex@example.com"
+                  placeholder="e.g. Shahil or shahil@settlr.ai"
                   value={query}
                   onChangeText={(t) => {
                     setQuery(t);
@@ -220,23 +220,25 @@ export function UserLookupModal({
 
                 <Input
                   label="Contact Name *"
-                  placeholder="e.g. Rahul"
+                  placeholder="e.g. Kamal"
                   value={newName}
                   onChangeText={setNewName}
                 />
 
                 <Input
                   label="Phone Number (Optional)"
-                  placeholder="e.g. +1 555 123 4567"
+                  placeholder="e.g. +91 98765 00001"
                   value={newPhone}
                   onChangeText={setNewPhone}
                   keyboardType="phone-pad"
                 />
 
+
                 <Input
                   label="Email (Optional)"
-                  placeholder="e.g. rahul@example.com"
+                  placeholder="e.g. kamal@settlr.ai"
                   value={newEmail}
+
                   onChangeText={setNewEmail}
                   autoCapitalize="none"
                   keyboardType="email-address"

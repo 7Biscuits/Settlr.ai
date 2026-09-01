@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import {
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -7,6 +8,7 @@ import {
   Text,
   View,
 } from "react-native";
+
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { chat, confirm } from "../../src/api/agent";
 import type { AgentReply, PendingAction } from "../../src/api/types";
@@ -17,7 +19,8 @@ import { useVoiceRecorder } from "../../src/features/ai/useVoiceRecorder";
 import { useVoicePlayer } from "../../src/features/ai/useVoicePlayer";
 import { ApiError } from "../../src/api/client";
 import { transcribe } from "../../src/api/voice";
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
+
 
 /** Infers an STT-friendly MIME type from the recording's file extension. */
 function mimeTypeForUri(uri: string): string {
@@ -74,10 +77,22 @@ export default function AssistantScreen() {
   } | null>(null);
   const [confirming, setConfirming] = useState(false);
 
-  // Auto-scroll to bottom when new entries arrive
+  // Auto-scroll to bottom when new entries arrive or keyboard appears
   useEffect(() => {
-    setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
-  }, [entries, loading]);
+    scrollRef.current?.scrollToEnd({ animated: true });
+  }, [entries]);
+
+  useEffect(() => {
+    const showSub = Keyboard.addListener(
+      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow",
+      () => {
+        setTimeout(() => {
+          scrollRef.current?.scrollToEnd({ animated: true });
+        }, 100);
+      },
+    );
+    return () => showSub.remove();
+  }, []);
 
   function pushAssistant(text: string) {
     setEntries((e) => [...e, { role: "assistant", text }]);
@@ -190,7 +205,8 @@ export default function AssistantScreen() {
     <KeyboardAvoidingView
       className="flex-1 bg-bg"
       style={{ paddingTop: insets.top }}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
     >
       <View className="border-b border-border p-4">
         <Text className="text-2xl font-bold text-text">Assistant</Text>
@@ -202,8 +218,11 @@ export default function AssistantScreen() {
       <ScrollView
         ref={scrollRef}
         className="flex-1"
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
         contentContainerStyle={{ padding: 16, gap: 10 }}
       >
+
         {entries.length === 0 ? (
           <View className="gap-2">
             {[

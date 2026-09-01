@@ -15,37 +15,13 @@ import { SettlrMouth } from './illustrations/SettlrMouth';
 import { CoinStackIllustration } from './illustrations/CoinStackIllustration';
 import { ThumbsUpHand } from './illustrations/ThumbsUpHand';
 
-interface GroupDebtItem {
+export interface GroupDebtItem {
   id: string;
   groupName: string;
   userOwes: boolean;
   amount: number;
   otherMember: string;
 }
-
-const DEFAULT_DEBTS: GroupDebtItem[] = [
-  {
-    id: '1',
-    groupName: 'Goa Trip 🏖️',
-    userOwes: false,
-    amount: 145.50,
-    otherMember: 'Rahul Verma',
-  },
-  {
-    id: '2',
-    groupName: 'Apartment 402 🏠',
-    userOwes: true,
-    amount: 68.20,
-    otherMember: 'Priya Sharma',
-  },
-  {
-    id: '3',
-    groupName: 'Friday Dinners 🍕',
-    userOwes: false,
-    amount: 34.00,
-    otherMember: 'Alex Chen',
-  },
-];
 
 interface BudgetScreenProps {
   onOpenSettings?: () => void;
@@ -61,17 +37,30 @@ export function BudgetScreen({
   onOpenSettings,
   onCreateGroup,
   onSettleDebt,
-  netBalance = 1274.87,
-  totalOwed = 326.00,
-  totalOwing = 188.00,
-  groupDebts = DEFAULT_DEBTS,
+  netBalance = 0,
+  totalOwed = 0,
+  totalOwing = 0,
+  groupDebts = [],
 }: BudgetScreenProps) {
   const insets = useSafeAreaInsets();
   const topInset = Math.max(insets.top, Platform.OS === 'ios' ? 44 : 24);
   const [showInsightBanner, setShowInsightBanner] = useState(true);
 
-  const intPart = Math.floor(netBalance);
-  const decPart = (netBalance % 1).toFixed(2).substring(1);
+  const isNetNegative = netBalance < 0;
+  const absNet = Math.abs(netBalance);
+  const intPart = Math.floor(absNet);
+  const decPart = (absNet % 1).toFixed(2).substring(1);
+
+  // Dynamic insight text derived from real database figures
+  const owedCount = groupDebts.filter((d) => !d.userOwes).length;
+  let insightMessage = '';
+  if (totalOwed > 0) {
+    insightMessage = `${owedCount} friend${owedCount > 1 ? 's' : ''} owe you ₹${totalOwed.toFixed(2)}. Want me to send friendly nudges? 💬`;
+  } else if (totalOwing > 0) {
+    insightMessage = `You have outstanding debts of ₹${totalOwing.toFixed(2)}. Settle directly from your wallet! ⚡`;
+  } else {
+    insightMessage = `All group debts are settled! You're completely up to date. 🎉`;
+  }
 
   return (
     <View style={styles.safeArea}>
@@ -94,7 +83,7 @@ export function BudgetScreen({
           </View>
 
           {/* Date Subtitle */}
-          <Text style={styles.dateSubtitle}>Active Billing Cycle • March 2026</Text>
+          <Text style={styles.dateSubtitle}>Active Billing Cycle • Settlr</Text>
 
           {/* Date Progress Bar */}
           <View style={styles.progressBarTrack}>
@@ -102,7 +91,7 @@ export function BudgetScreen({
           </View>
 
           {/* Days Left Label */}
-          <Text style={styles.daysLeftText}>11 days until settlement</Text>
+          <Text style={styles.daysLeftText}>Live Balances Synced</Text>
 
           {/* Coin Stacks & Side Navigation Arrows */}
           <View style={styles.coinsWrapper}>
@@ -128,13 +117,13 @@ export function BudgetScreen({
             {/* Left Metric: Net Group Balance */}
             <View style={styles.statColumn}>
               <View style={styles.amountRow}>
-                <Text style={styles.currencySymbol}>₹</Text>
+                <Text style={styles.currencySymbol}>{isNetNegative ? '-₹' : '₹'}</Text>
                 <Text style={styles.statInteger}>{intPart.toLocaleString()}</Text>
                 <Text style={styles.statDecimal}>{decPart}</Text>
               </View>
               <View style={styles.statSubRow}>
                 <Text style={styles.statSubTextMuted}>net </Text>
-                <Text style={styles.statSubTextBlue}>settlement</Text>
+                <Text style={styles.statSubTextBlue}>balance</Text>
                 <View style={styles.pencilIconWrapper}>
                   <Svg width={14} height={14} viewBox="0 0 24 24">
                     <Path
@@ -159,14 +148,16 @@ export function BudgetScreen({
             {/* Vertical Divider */}
             <View style={styles.verticalDivider} />
 
-            {/* Right Metric: Daily Allowance */}
+            {/* Right Metric: Active Settlements */}
             <View style={styles.statColumn}>
               <View style={styles.amountRow}>
                 <Text style={styles.currencySymbol}>₹</Text>
-                <Text style={styles.statInteger}>115</Text>
-                <Text style={styles.statDecimal}>.90</Text>
+                <Text style={styles.statInteger}>{totalOwed.toFixed(0)}</Text>
+                <Text style={styles.statDecimal}>
+                  {(totalOwed % 1).toFixed(2).substring(1)}
+                </Text>
               </View>
-              <Text style={styles.statSubTextMuted}>daily allowance</Text>
+              <Text style={styles.statSubTextMuted}>receivable total</Text>
             </View>
           </View>
 
@@ -174,9 +165,7 @@ export function BudgetScreen({
           {showInsightBanner && (
             <View style={styles.insightBanner}>
               <SettlrMouth />
-              <Text style={styles.insightText}>
-                3 friends owe you ₹326. Want me to send friendly nudges? 💬
-              </Text>
+              <Text style={styles.insightText}>{insightMessage}</Text>
               <Pressable
                 hitSlop={8}
                 style={styles.closeBannerButton}
@@ -195,32 +184,53 @@ export function BudgetScreen({
               </Pressable>
             </View>
 
-            <View style={styles.debtsList}>
-              {groupDebts.map((item) => (
-                <View key={item.id} style={styles.debtItemRow}>
-                  <View style={styles.debtLeft}>
-                    <View style={[styles.debtBadge, item.userOwes ? styles.debtBadgeOwe : styles.debtBadgeOwed]}>
-                      <Text style={styles.debtBadgeText}>{item.userOwes ? 'You Owe' : 'Owed'}</Text>
+            {groupDebts.length === 0 ? (
+              <View style={styles.emptyDebtsBox}>
+                <Text style={styles.emptyDebtsTitle}>No outstanding debts 🎉</Text>
+                <Text style={styles.emptyDebtsSub}>
+                  You and your group members are fully settled up!
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.debtsList}>
+                {groupDebts.map((item) => (
+                  <View key={item.id} style={styles.debtItemRow}>
+                    <View style={styles.debtLeft}>
+                      <View
+                        style={[
+                          styles.debtBadge,
+                          item.userOwes ? styles.debtBadgeOwe : styles.debtBadgeOwed,
+                        ]}>
+                        <Text style={styles.debtBadgeText}>
+                          {item.userOwes ? 'You Owe' : 'Owed'}
+                        </Text>
+                      </View>
+                      <View style={styles.debtTextGroup}>
+                        <Text style={styles.debtGroupName}>{item.groupName}</Text>
+                        <Text style={styles.debtMember}>{item.otherMember}</Text>
+                      </View>
                     </View>
-                    <View style={styles.debtTextGroup}>
-                      <Text style={styles.debtGroupName}>{item.groupName}</Text>
-                      <Text style={styles.debtMember}>{item.otherMember}</Text>
-                    </View>
-                  </View>
 
-                  <View style={styles.debtRight}>
-                    <Text style={[styles.debtAmount, item.userOwes ? styles.debtOweAmount : styles.debtOwedAmount]}>
-                      ₹{item.amount.toFixed(2)}
-                    </Text>
-                    <Pressable
-                      onPress={() => onSettleDebt?.(item)}
-                      style={styles.settleButton}>
-                      <Text style={styles.settleButtonText}>Settle</Text>
-                    </Pressable>
+                    <View style={styles.debtRight}>
+                      <Text
+                        style={[
+                          styles.debtAmount,
+                          item.userOwes ? styles.debtOweAmount : styles.debtOwedAmount,
+                        ]}>
+                        ₹{item.amount.toFixed(2)}
+                      </Text>
+                      {item.userOwes && (
+                        <Pressable
+                          onPress={() => onSettleDebt?.(item)}
+                          style={styles.settleButton}>
+                          <Text style={styles.settleButtonText}>Settle</Text>
+                        </Pressable>
+                      )}
+                    </View>
                   </View>
-                </View>
-              ))}
-            </View>
+                ))}
+              </View>
+            )}
           </View>
         </View>
       </ScrollView>
@@ -284,7 +294,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   progressBarFill: {
-    width: '58%',
+    width: '75%',
     height: '100%',
     backgroundColor: '#00F58D',
     borderRadius: 4,
@@ -442,6 +452,25 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     letterSpacing: 0.5,
     textTransform: 'uppercase',
+  },
+  emptyDebtsBox: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 16,
+    padding: 20,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  emptyDebtsTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  emptyDebtsSub: {
+    fontSize: 13.5,
+    color: '#64748B',
+    marginTop: 4,
+    textAlign: 'center',
   },
   debtsList: {
     gap: 12,

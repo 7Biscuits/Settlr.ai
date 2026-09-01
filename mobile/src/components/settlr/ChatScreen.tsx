@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import {
+  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -11,12 +12,16 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather, Ionicons } from '@expo/vector-icons';
-import { chat } from '../../api/agent';
+import { chat, confirm } from '../../api/agent';
+import type { AgentReply, PendingAction } from '../../api/types';
+import { ConfirmSheet } from '../ConfirmSheet';
+import { ApiError } from '../../api/client';
 
 interface ChatMessage {
   id: string;
   sender: 'user' | 'assistant';
   text: string;
+  isError?: boolean;
 }
 
 interface ChatScreenProps {
@@ -25,17 +30,78 @@ interface ChatScreenProps {
   isRecording?: boolean;
 }
 
+function formatActionDetails(tool: string, args: unknown): string {
+  const a = (args || {}) as Record<string, unknown>;
+  switch (tool) {
+    case 'create_group':
+      return `Create group "${a.name}"`;
+    case 'invite_to_group':
+      return `Add ${a.query || a.email || a.phone || 'member'} to group`;
+    case 'create_expense': {
+      const amountRupees = typeof a.amount === 'number' ? (a.amount / 100).toFixed(2) : '?';
+      return `₹${amountRupees} for "${a.description}" split ${a.splitType || 'equal'}`;
+    }
+    case 'settle_debt':
+      return `Settle debt of ₹${typeof a.amount === 'number' ? (a.amount / 100).toFixed(2) : '?'}`;
+    case 'transfer_wallet_funds':
+      return `Transfer ₹${typeof a.amount === 'number' ? (a.amount / 100).toFixed(2) : '?'}`;
+    default:
+      return JSON.stringify(args);
+  }
+}
+
 export function ChatScreen({ onOpenSettings, onVoiceRecord, isRecording = false }: ChatScreenProps) {
   const insets = useSafeAreaInsets();
   const topInset = Math.max(insets.top, Platform.OS === 'ios' ? 44 : 24);
+  const scrollRef = useRef<ScrollView>(null);
 
   const [inputText, setInputText] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
-  const [showNotificationPopup, setShowNotificationPopup] = useState(false);
+  const [conversation, setConversation] = useState<unknown[] | undefined>();
 
-  const handleSend = async () => {
-    const text = inputText.trim();
+  // Sensitive action confirmation state
+  const [pending, setPending] = useState<{
+    action: PendingAction;
+    content: string;
+  } | null>(null);
+  const [confirming, setConfirming] = useState(false);
+
+  useEffect(() => {
+    setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
+  }, [messages, loading]);
+
+  const applyReply = (reply: AgentReply) => {
+    setConversation(reply.messages);
+    if (reply.type === 'confirmation_required' && reply.pendingAction) {
+      setPending({
+        action: reply.pendingAction,
+        content: reply.content,
+      });
+      if (reply.content) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: (Date.now() + 1).toString(),
+            sender: 'assistant',
+            text: reply.content,
+          },
+        ]);
+      }
+    } else {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: (Date.now() + 1).toString(),
+          sender: 'assistant',
+          text: reply.content || 'Done!',
+        },
+      ]);
+    }
+  };
+
+  const handleSend = async (customText?: string) => {
+    const text = (customText ?? inputText).trim();
     if (!text || loading) return;
 
     const userMsg: ChatMessage = {
@@ -48,41 +114,56 @@ export function ChatScreen({ onOpenSettings, onVoiceRecord, isRecording = false 
     setLoading(true);
 
     try {
-      const res = await chat(text);
+      const res = await chat(text, conversation);
+      applyReply(res);
+    } catch (err) {
+      const errMsg =
+        err instanceof ApiError
+          ? err.message
+          : err instanceof Error
+          ? err.message
+          : 'Unable to connect to AI Assistant. Please check backend connection.';
       setMessages((prev) => [
         ...prev,
         {
           id: (Date.now() + 1).toString(),
           sender: 'assistant',
-          text: res.content,
+          text: `⚠️ ${errMsg}`,
+          isError: true,
         },
       ]);
-    } catch {
-      // Graceful local smart fallback with ₹
-      setTimeout(() => {
-        let reply = "I've analyzed your balances across all active groups. You're net positive by ₹3,260! Rahul owes you ₹1,455 from Goa Trip.";
-        const lower = text.toLowerCase();
-        if (lower.includes('category') || lower.includes('spend')) {
-          reply = "Here's your top spending categories this month: 🍔 Food & Dining (₹1,700), 🚗 Transport (₹642), 🎬 Entertainment (₹160).";
-        } else if (lower.includes('settle') || lower.includes('pay')) {
-          reply = "You can settle ₹682 directly to Priya in 'Apartment 402' with 1-tap instant transfer via your Settlr Wallet!";
-        }
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: (Date.now() + 1).toString(),
-            sender: 'assistant',
-            text: reply,
-          },
-        ]);
-      }, 500);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleQuickReply = (replyText: string) => {
-    setInputText(replyText);
+  const handleConfirmAction = async () => {
+    if (!pending) return;
+    setConfirming(true);
+    try {
+      const reply = await confirm(pending.action.proposalId);
+      setPending(null);
+      applyReply(reply);
+    } catch (err) {
+      setPending(null);
+      const errMsg =
+        err instanceof ApiError
+          ? err.message
+          : err instanceof Error
+          ? err.message
+          : 'The action could not be completed.';
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: (Date.now() + 1).toString(),
+          sender: 'assistant',
+          text: `⚠️ ${errMsg}`,
+          isError: true,
+        },
+      ]);
+    } finally {
+      setConfirming(false);
+    }
   };
 
   return (
@@ -90,7 +171,7 @@ export function ChatScreen({ onOpenSettings, onVoiceRecord, isRecording = false 
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.keyboardView}>
-        {/* Background Watermark "SETTLR AI" */}
+        {/* Background Watermark */}
         <View style={styles.watermarkContainer} pointerEvents="none">
           <Text style={styles.watermarkText}>SETTLR{'\n'}AI</Text>
         </View>
@@ -99,125 +180,83 @@ export function ChatScreen({ onOpenSettings, onVoiceRecord, isRecording = false 
         <View style={[styles.headerRow, { paddingTop: topInset + 4 }]}>
           <View style={styles.headerSpacer} />
           <View style={styles.headerActions}>
-            <Pressable
-              onPress={() => setShowNotificationPopup((prev) => !prev)}
-              style={styles.iconButton}>
-              <Ionicons name="notifications-outline" size={24} color="#0F172A" />
-              <View style={styles.notificationBadge}>
-                <Text style={styles.notificationBadgeText}>!</Text>
-              </View>
-            </Pressable>
-
             <Pressable onPress={onOpenSettings} style={styles.iconButton}>
               <Ionicons name="person-circle-outline" size={32} color="#0F172A" />
             </Pressable>
           </View>
         </View>
 
-        {/* Notification Dropdown */}
-        {showNotificationPopup && (
-          <View style={styles.notificationBanner}>
-            <Text style={styles.notifTitle}>⚡ Settlr Alert</Text>
-            <Text style={styles.notifDesc}>
-              Rahul settled ₹450 for the Goa Trip. Your new balance is ₹12,748.87.
-            </Text>
-            <Pressable
-              onPress={() => setShowNotificationPopup(false)}
-              style={styles.dismissNotif}>
-              <Text style={styles.dismissNotifText}>Dismiss</Text>
-            </Pressable>
-          </View>
-        )}
-
         {/* Chat Scrollable Message Stream */}
         <ScrollView
+          ref={scrollRef}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.chatScrollContent}>
-          {/* Message 1: Overview */}
-          <View style={styles.cleoMessageContainer}>
-            <View style={styles.overviewCard}>
-              <Text style={styles.messageHeading}>
-                Here's your active expense snapshot for this month:
-              </Text>
-              <View style={styles.overviewStats}>
-                <Text style={styles.statLine}>+ ₹3,260 Owed to You 💰</Text>
-                <Text style={styles.statLine}>- ₹1,880 You Owe 💸</Text>
-                <Text style={styles.statLine}>= ₹1,380 Net Receivable 📈</Text>
-              </View>
-            </View>
-
-            <View style={styles.cleoPillBadge}>
-              <Text style={styles.cleoPillText}>SETTLR</Text>
-            </View>
-          </View>
-
-          {/* User Message Sample */}
-          <View style={styles.userMessageBubble}>
-            <Text style={styles.userMessageText}>by categories 📦</Text>
-          </View>
-
-          {/* Message 2: Category Breakdown Card */}
-          <View style={styles.categoryCard}>
-            <View style={styles.categoryCardBody}>
-              <Text style={styles.messageHeading}>
-                Group spending by category:
-              </Text>
-
-              <View style={styles.breakdownList}>
-                <Text style={styles.breakdownItem}>₹1,700 on Dinners & Drinks 🍕</Text>
-                <Text style={styles.breakdownItem}>₹642 on Groceries 🛒</Text>
-                <Text style={styles.breakdownItem}>₹160 on OTT Subscriptions 🍿</Text>
+          {/* Welcome Card & Suggested Prompts when empty */}
+          {messages.length === 0 ? (
+            <View style={styles.welcomeContainer}>
+              <View style={styles.overviewCard}>
+                <Text style={styles.welcomeHeading}>👋 Hi! I'm Settlr AI</Text>
+                <Text style={styles.welcomeSubheading}>
+                  Ask me about your group balances, who owes you money, or let me record expenses and settle debts for you!
+                </Text>
               </View>
 
-              <Text style={styles.totalAmount}>₹2,502 Total Split</Text>
+              <View style={styles.quickRepliesContainer}>
+                <Text style={styles.quickRepliesHeader}>Try asking:</Text>
+                {[
+                  'Who owes me money? 🧠',
+                  'How much do I owe? 💸',
+                  'Create a group called Goa Trip 🏖️',
+                  'Add Alice and Bob and split ₹600 for lunch 🍕',
+                  'Settle all my group balances 💳',
+                ].map((promptText) => (
+                  <Pressable
+                    key={promptText}
+                    onPress={() => handleSend(promptText.replace(/[^\w\s₹?]/gi, '').trim())}
+                    style={styles.quickReplyPill}>
+                    <Text style={styles.quickReplyText}>{promptText}</Text>
+                  </Pressable>
+                ))}
+              </View>
             </View>
+          ) : (
+            messages.map((msg) => (
+              <View
+                key={msg.id}
+                style={
+                  msg.sender === 'user'
+                    ? styles.userMessageBubble
+                    : styles.cleoMessageContainer
+                }>
+                {msg.sender === 'user' ? (
+                  <Text style={styles.userMessageText}>{msg.text}</Text>
+                ) : (
+                  <View
+                    style={[
+                      styles.overviewCard,
+                      msg.isError ? styles.errorCard : null,
+                    ]}>
+                    <Text
+                      style={[
+                        styles.messageHeading,
+                        msg.isError ? styles.errorMessageText : null,
+                      ]}>
+                      {msg.text}
+                    </Text>
+                  </View>
+                )}
+              </View>
+            ))
+          )}
 
-            <Pressable
-              onPress={() => handleQuickReply('Show full spending category details')}
-              style={styles.seeMoreButton}>
-              <Text style={styles.seeMoreText}>See more details</Text>
-            </Pressable>
-          </View>
-
-          {/* Render User Sent Messages */}
-          {messages.map((msg) => (
-            <View
-              key={msg.id}
-              style={
-                msg.sender === 'user'
-                  ? styles.userMessageBubble
-                  : styles.cleoMessageContainer
-              }>
-              {msg.sender === 'user' ? (
-                <Text style={styles.userMessageText}>{msg.text}</Text>
-              ) : (
-                <View style={styles.overviewCard}>
-                  <Text style={styles.messageHeading}>{msg.text}</Text>
-                </View>
-              )}
+          {loading ? (
+            <View style={styles.cleoMessageContainer}>
+              <View style={[styles.overviewCard, styles.loadingCard]}>
+                <ActivityIndicator size="small" color="#2738F5" />
+                <Text style={styles.loadingText}>Thinking…</Text>
+              </View>
             </View>
-          ))}
-
-          {/* Suggested Quick Replies */}
-          <View style={styles.quickRepliesContainer}>
-            <Pressable
-              onPress={() => handleQuickReply('who owes me money? 🧠')}
-              style={styles.quickReplyPill}>
-              <Text style={styles.quickReplyText}>who owes me? 🧠</Text>
-            </Pressable>
-
-            <Pressable
-              onPress={() => handleQuickReply('settle all balances 💸')}
-              style={styles.quickReplyPill}>
-              <Text style={styles.quickReplyText}>settle balances 💸</Text>
-            </Pressable>
-
-            <Pressable
-              onPress={() => handleQuickReply('split a new bill 👉')}
-              style={styles.quickReplyPill}>
-              <Text style={styles.quickReplyText}>split a bill 👉</Text>
-            </Pressable>
-          </View>
+          ) : null}
         </ScrollView>
 
         {/* Floating Chat Input & Mic Bar */}
@@ -226,21 +265,21 @@ export function ChatScreen({ onOpenSettings, onVoiceRecord, isRecording = false 
             <TextInput
               value={inputText}
               onChangeText={setInputText}
-              onSubmitEditing={handleSend}
+              onSubmitEditing={() => handleSend()}
               placeholder="Ask Settlr AI..."
               placeholderTextColor="#94A3B8"
               style={styles.textInput}
             />
             {inputText.length > 0 ? (
-              <Pressable onPress={handleSend} style={styles.sendIconWrapper}>
+              <Pressable onPress={() => handleSend()} style={styles.sendIconWrapper}>
                 <Ionicons name="arrow-up-circle" size={32} color="#2738F5" />
               </Pressable>
             ) : (
               <Pressable onPress={onVoiceRecord} style={styles.sendIconWrapper}>
                 <Ionicons
-                  name={isRecording ? "mic" : "mic-outline"}
+                  name={isRecording ? 'mic' : 'mic-outline'}
                   size={24}
-                  color={isRecording ? "#EF4444" : "#2738F5"}
+                  color={isRecording ? '#EF4444' : '#2738F5'}
                 />
               </Pressable>
             )}
@@ -248,12 +287,43 @@ export function ChatScreen({ onOpenSettings, onVoiceRecord, isRecording = false 
 
           <Pressable onPress={onVoiceRecord} style={styles.homeActionButton}>
             <Ionicons
-              name={isRecording ? "radio" : "sparkles"}
+              name={isRecording ? 'radio' : 'sparkles'}
               size={22}
-              color={isRecording ? "#EF4444" : "#2738F5"}
+              color={isRecording ? '#EF4444' : '#2738F5'}
             />
           </Pressable>
         </View>
+
+        {/* Sensitive Action Confirmation Sheet */}
+        <ConfirmSheet
+          visible={!!pending}
+          title="Confirm this action?"
+          description={
+            pending?.content ??
+            'Settlr will execute this action on the backend once confirmed.'
+          }
+          rows={
+            pending
+              ? [
+                  {
+                    label: 'Action',
+                    value: pending.action.tool.replace(/_/g, ' '),
+                  },
+                  {
+                    label: 'Details',
+                    value: formatActionDetails(
+                      pending.action.tool,
+                      pending.action.arguments,
+                    ),
+                  },
+                ]
+              : []
+          }
+          confirmLabel="Confirm & execute"
+          loading={confirming}
+          onConfirm={handleConfirmAction}
+          onCancel={() => setPending(null)}
+        />
       </KeyboardAvoidingView>
     </View>
   );
@@ -307,74 +377,44 @@ const styles = StyleSheet.create({
     position: 'relative',
     padding: 2,
   },
-  notificationBadge: {
-    position: 'absolute',
-    top: -2,
-    right: -2,
-    backgroundColor: '#EF4444',
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1.5,
-    borderColor: '#EDF4FF',
-  },
-  notificationBadgeText: {
-    color: '#FFFFFF',
-    fontSize: 10,
-    fontWeight: '900',
-  },
-  notificationBanner: {
-    backgroundColor: '#1E293B',
-    marginHorizontal: 16,
-    borderRadius: 16,
-    padding: 14,
-    marginTop: 4,
-    marginBottom: 8,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
-    elevation: 3,
-    zIndex: 20,
-  },
-  notifTitle: {
-    color: '#00F58D',
-    fontSize: 14,
-    fontWeight: '800',
-  },
-  notifDesc: {
-    color: '#F8FAFC',
-    fontSize: 13,
-    marginTop: 2,
-    lineHeight: 18,
-  },
-  dismissNotif: {
-    alignSelf: 'flex-end',
-    marginTop: 6,
-  },
-  dismissNotifText: {
-    color: '#93C5FD',
-    fontSize: 12,
-    fontWeight: '700',
-  },
   chatScrollContent: {
     paddingHorizontal: 14,
     paddingTop: 8,
     paddingBottom: 16,
     zIndex: 5,
+    flexGrow: 1,
+  },
+  welcomeContainer: {
+    gap: 14,
+    paddingTop: 8,
+  },
+  welcomeHeading: {
+    color: '#0F172A',
+    fontSize: 18,
+    fontWeight: '800',
+    marginBottom: 6,
+  },
+  welcomeSubheading: {
+    color: '#475569',
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  quickRepliesHeader: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#64748B',
+    marginBottom: 4,
   },
   cleoMessageContainer: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    marginBottom: 16,
-    maxWidth: '82%',
+    marginBottom: 14,
+    maxWidth: '85%',
     position: 'relative',
   },
   overviewCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 22,
+    borderRadius: 20,
     padding: 16,
     shadowColor: '#000000',
     shadowOffset: { width: 0, height: 2 },
@@ -383,49 +423,41 @@ const styles = StyleSheet.create({
     elevation: 2,
     flex: 1,
   },
+  errorCard: {
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+  },
+  errorMessageText: {
+    color: '#B91C1C',
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  loadingCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 12,
+  },
+  loadingText: {
+    color: '#64748B',
+    fontSize: 14,
+    fontWeight: '500',
+  },
   messageHeading: {
     color: '#0F172A',
     fontSize: 15,
-    fontWeight: '600',
-    lineHeight: 21,
-  },
-  overviewStats: {
-    marginTop: 10,
-    gap: 4,
-  },
-  statLine: {
-    color: '#0F172A',
-    fontSize: 15,
-    fontWeight: '600',
-    letterSpacing: -0.1,
-  },
-  cleoPillBadge: {
-    position: 'absolute',
-    right: -36,
-    top: 36,
-    backgroundColor: '#2738F5',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 14,
-    shadowColor: '#2738F5',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  cleoPillText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '900',
-    letterSpacing: 0.5,
+    fontWeight: '500',
+    lineHeight: 22,
   },
   userMessageBubble: {
     backgroundColor: '#2738F5',
     borderRadius: 20,
-    paddingHorizontal: 18,
+    paddingHorizontal: 16,
     paddingVertical: 10,
     alignSelf: 'flex-end',
-    marginBottom: 16,
+    marginBottom: 14,
+    maxWidth: '80%',
     shadowColor: '#2738F5',
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.2,
@@ -436,64 +468,19 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '600',
-  },
-  categoryCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 24,
-    maxWidth: '82%',
-    marginBottom: 16,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    elevation: 2,
-    overflow: 'hidden',
-  },
-  categoryCardBody: {
-    padding: 16,
-  },
-  breakdownList: {
-    marginTop: 14,
-    gap: 6,
-  },
-  breakdownItem: {
-    color: '#0F172A',
-    fontSize: 15,
-    fontWeight: '600',
-    letterSpacing: -0.1,
-  },
-  totalAmount: {
-    color: '#0F172A',
-    fontSize: 15.5,
-    fontWeight: '800',
-    marginTop: 16,
-    letterSpacing: -0.2,
-  },
-  seeMoreButton: {
-    borderTopWidth: 1,
-    borderTopColor: '#F1F5F9',
-    paddingVertical: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  seeMoreText: {
-    color: '#2738F5',
-    fontSize: 15,
-    fontWeight: '700',
+    lineHeight: 20,
   },
   quickRepliesContainer: {
-    alignItems: 'flex-end',
     marginTop: 6,
-    gap: 10,
-    marginBottom: 12,
+    gap: 8,
   },
   quickReplyPill: {
     backgroundColor: '#FFFFFF',
     borderWidth: 1.5,
     borderColor: '#2738F5',
-    borderRadius: 22,
-    paddingHorizontal: 18,
-    paddingVertical: 9,
+    borderRadius: 18,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
     shadowColor: '#000000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.04,
@@ -502,7 +489,7 @@ const styles = StyleSheet.create({
   },
   quickReplyText: {
     color: '#2738F5',
-    fontSize: 14.5,
+    fontSize: 14,
     fontWeight: '600',
   },
   inputBarWrapper: {

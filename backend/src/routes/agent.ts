@@ -47,31 +47,39 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
     }
     const { id: userId } = request.user as { id: string };
     const { message, messages } = chatSchema.parse(request.body);
-    const result = await agent.chat(
-      { userId },
-      message,
-      messages as ChatMessage[] | undefined,
-    );
-    if (result.type === "confirmation_required" && result.pendingAction) {
-      const proposal = await createActionProposal({
-        userId,
-        toolName: result.pendingAction.tool,
-        toolArguments: result.pendingAction.arguments,
-        toolCallId: result.pendingAction.toolCallId,
-        messages: result.messages,
-      });
-      // Do not let a client submit an alternate tool, argument set, call id or
-      // history during confirmation. Only the opaque proposal id comes back.
-      return reply.send({
-        ...result,
-        pendingAction: {
-          proposalId: proposal.id,
-          tool: result.pendingAction.tool,
-          arguments: result.pendingAction.arguments,
-        },
+
+    try {
+      const result = await agent.chat(
+        { userId },
+        message,
+        messages as ChatMessage[] | undefined,
+      );
+      if (result.type === "confirmation_required" && result.pendingAction) {
+        const proposal = await createActionProposal({
+          userId,
+          toolName: result.pendingAction.tool,
+          toolArguments: result.pendingAction.arguments,
+          toolCallId: result.pendingAction.toolCallId,
+          messages: result.messages,
+        });
+        return reply.send({
+          ...result,
+          pendingAction: {
+            proposalId: proposal.id,
+            tool: result.pendingAction.tool,
+            arguments: result.pendingAction.arguments,
+          },
+        });
+      }
+      return reply.send(result);
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : "AI service error";
+      request.log.error(err, "Agent chat error");
+      return reply.code(502).send({
+        error: "AI Service Error",
+        message: errorMsg,
       });
     }
-    return reply.send(result);
   });
 
   app.post("/agent/confirm", { preHandler: agentRateLimit }, async (request, reply) => {
@@ -83,24 +91,35 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
     }
     const { id: userId } = request.user as { id: string };
     const { proposalId } = confirmSchema.parse(request.body);
-    const claimed = await claimActionProposal(proposalId, userId);
-    if (claimed.kind === "completed") {
-      return reply.send(claimed.result);
+
+    try {
+      const claimed = await claimActionProposal(proposalId, userId);
+      if (claimed.kind === "completed") {
+        return reply.send(claimed.result);
+      }
+      const result = await agent.confirm(
+        { userId },
+        claimed.proposal.toolName,
+        claimed.proposal.toolArguments,
+        claimed.proposal.toolCallId,
+        claimed.proposal.messages as ChatMessage[],
+      );
+      await completeActionProposal(
+        proposalId,
+        userId,
+        claimed.executionToken,
+        result,
+      );
+      return reply.send(result);
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : "AI confirmation error";
+      request.log.error(err, "Agent confirmation error");
+      return reply.code(502).send({
+        error: "AI Service Error",
+        message: errorMsg,
+      });
     }
-    const result = await agent.confirm(
-      { userId },
-      claimed.proposal.toolName,
-      claimed.proposal.toolArguments,
-      claimed.proposal.toolCallId,
-      claimed.proposal.messages as ChatMessage[],
-    );
-    await completeActionProposal(
-      proposalId,
-      userId,
-      claimed.executionToken,
-      result,
-    );
-    return reply.send(result);
   });
+
 }
 

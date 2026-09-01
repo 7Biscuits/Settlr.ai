@@ -27,30 +27,60 @@ export async function chatCompletion(
   messages: ChatMessage[],
   tools: unknown[],
 ): Promise<ChatCompletionResult> {
-  if (!env.DEEPSEEK_API_KEY) {
-    throw new Error("DEEPSEEK_API_KEY is not configured");
+  let rawBase = (env.DEEPSEEK_BASE_URL || "https://api.deepseek.com").trim().replace(/\/+$/, "");
+  let endpoint: string;
+  if (rawBase.endsWith("/chat/completions")) {
+    endpoint = rawBase;
+  } else if (rawBase.endsWith("/v1")) {
+    endpoint = `${rawBase}/chat/completions`;
+  } else if (rawBase.includes("deepseek.com")) {
+    endpoint = `${rawBase}/chat/completions`;
+  } else {
+    endpoint = `${rawBase}/v1/chat/completions`;
   }
 
-  const res = await fetch(`${env.DEEPSEEK_BASE_URL}/chat/completions`, {
+  const payload: Record<string, unknown> = {
+    model: env.DEEPSEEK_MODEL || "deepseek-chat",
+    messages,
+  };
+
+  if (Array.isArray(tools) && tools.length > 0) {
+    payload.tools = tools;
+    payload.tool_choice = "auto";
+  }
+
+  const res = await fetch(endpoint, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${env.DEEPSEEK_API_KEY}`,
     },
-    body: JSON.stringify({
-      model: env.DEEPSEEK_MODEL,
-      messages,
-      tools,
-      tool_choice: "auto",
-    }),
+    body: JSON.stringify(payload),
   });
 
+  const responseText = await res.text();
+
   if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`DeepSeek API error ${res.status}: ${text}`);
+    let errorDetail = responseText;
+    try {
+      const parsed = JSON.parse(responseText) as {
+        error?: { message?: string; code?: string | number };
+        message?: string;
+      };
+      errorDetail = parsed.error?.message ?? parsed.message ?? responseText;
+    } catch {
+      // not JSON
+    }
+
+    if (res.status === 402 || errorDetail.toLowerCase().includes("insufficient balance")) {
+      throw new Error(
+        "AI API: Insufficient balance. Please recharge API credits or update DEEPSEEK_API_KEY.",
+      );
+    }
+    throw new Error(`AI API error ${res.status}: ${errorDetail}`);
   }
 
-  const json = (await res.json()) as {
+  let json: {
     choices: {
       message: {
         content: string | null;
@@ -59,9 +89,16 @@ export async function chatCompletion(
     }[];
   };
 
-  const message = json.choices[0]?.message;
+  try {
+    json = JSON.parse(responseText);
+  } catch {
+    throw new Error(`AI API error: Received invalid JSON response from ${endpoint}`);
+  }
+
+  const message = json.choices?.[0]?.message;
   return {
     content: message?.content ?? null,
     toolCalls: message?.tool_calls ?? [],
   };
+
 }

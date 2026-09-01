@@ -9,9 +9,8 @@ import {
 import { Input } from "./Input";
 import { Button } from "./Button";
 import { Card } from "./Card";
-import { LoadingState } from "./States";
-import { lookupUser, bulkLookupContacts } from "../api/users";
-import { ensureContactsPermission, searchContacts } from "../lib/contacts";
+import { lookupUser } from "../api/users";
+import { createLocalContact, searchContacts } from "../lib/contacts";
 import type { ContactMatchUser } from "../api/types";
 
 interface Props {
@@ -23,17 +22,20 @@ interface Props {
 
 export function UserLookupModal({
   visible,
-  title = "Find PayPilot User",
+  title = "Find or Add Contact",
   onSelect,
   onCancel,
 }: Props) {
-  const [tab, setTab] = useState<"search" | "contacts">("search");
+  const [mode, setMode] = useState<"search" | "create">("search");
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchedUser, setSearchedUser] = useState<ContactMatchUser | null>(null);
-  const [matchedContacts, setMatchedContacts] = useState<ContactMatchUser[]>([]);
-  const [contactsScanned, setContactsScanned] = useState(false);
+
+  // New Contact Fields
+  const [newName, setNewName] = useState("");
+  const [newPhone, setNewPhone] = useState("");
+  const [newEmail, setNewEmail] = useState("");
 
   async function handleSearch() {
     const q = query.trim();
@@ -53,61 +55,57 @@ export function UserLookupModal({
         query: !isEmail && !isPhone ? q : undefined,
       });
       setSearchedUser(res.user);
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "No registered user found.",
-      );
+    } catch {
+      // If not on server, check local contacts
+      const local = await searchContacts(q);
+      if (local.length > 0 && local[0]) {
+        setSearchedUser({
+          id: local[0].id,
+          name: local[0].name,
+          avatarUrl: null,
+          phone: local[0].phoneNumbers[0] || null,
+          email: local[0].emails[0] || null,
+        });
+      } else {
+        setError(`No existing user found for "${q}". You can create a new contact below.`);
+        setNewName(q);
+      }
     } finally {
       setLoading(false);
     }
   }
 
-  async function handleScanContacts() {
-    setLoading(true);
-    setError(null);
-    try {
-      const granted = await ensureContactsPermission();
-      if (!granted) {
-        setError("Contacts permission is required to find registered contacts.");
-        setLoading(false);
-        return;
-      }
-      const localContacts = await searchContacts("");
-      const phones: string[] = [];
-      const emails: string[] = [];
-      for (const c of localContacts) {
-        phones.push(...c.phoneNumbers);
-        emails.push(...c.emails);
-      }
-
-      if (phones.length === 0 && emails.length === 0) {
-        setError("No contacts found on device with phone or email.");
-        setContactsScanned(true);
-        setLoading(false);
-        return;
-      }
-
-      const res = await bulkLookupContacts({
-        phones: phones.slice(0, 300),
-        emails: emails.slice(0, 300),
-      });
-      setMatchedContacts(res.matched);
-      setContactsScanned(true);
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Failed to match contacts.",
-      );
-    } finally {
-      setLoading(false);
+  function handleCreateContact() {
+    const name = newName.trim();
+    if (!name) {
+      setError("Contact name is required.");
+      return;
     }
+
+    const contact = createLocalContact(
+      name,
+      newPhone.trim() || undefined,
+      newEmail.trim() || undefined,
+    );
+
+    onSelect({
+      id: contact.id,
+      name: contact.name,
+      avatarUrl: null,
+      phone: contact.phoneNumbers[0] || null,
+      email: contact.emails[0] || null,
+    });
+    handleClose();
   }
 
   function handleClose() {
     setQuery("");
     setError(null);
     setSearchedUser(null);
-    setMatchedContacts([]);
-    setContactsScanned(false);
+    setNewName("");
+    setNewPhone("");
+    setNewEmail("");
+    setMode("search");
     onCancel();
   }
 
@@ -126,32 +124,31 @@ export function UserLookupModal({
             <View className="flex-1">
               <Button
                 title="Search User"
-                variant={tab === "search" ? "primary" : "secondary"}
+                variant={mode === "search" ? "primary" : "secondary"}
                 onPress={() => {
-                  setTab("search");
+                  setMode("search");
                   setError(null);
                 }}
               />
             </View>
             <View className="flex-1">
               <Button
-                title="Device Contacts"
-                variant={tab === "contacts" ? "primary" : "secondary"}
+                title="+ New Contact"
+                variant={mode === "create" ? "primary" : "secondary"}
                 onPress={() => {
-                  setTab("contacts");
+                  setMode("create");
                   setError(null);
-                  if (!contactsScanned) void handleScanContacts();
                 }}
               />
             </View>
           </View>
 
           <ScrollView contentContainerStyle={{ gap: 12, paddingBottom: 24 }}>
-            {tab === "search" ? (
+            {mode === "search" ? (
               <View className="gap-3">
                 <Input
-                  label="Search by Email, Phone, or Name"
-                  placeholder="e.g. alex@example.com or +14155552671"
+                  label="Search by Name, Email, or Phone"
+                  placeholder="e.g. Alex or alex@example.com"
                   value={query}
                   onChangeText={(t) => {
                     setQuery(t);
@@ -166,7 +163,17 @@ export function UserLookupModal({
                 />
 
                 {error ? (
-                  <Text className="text-sm text-danger">{error}</Text>
+                  <View className="gap-2">
+                    <Text className="text-sm text-danger">{error}</Text>
+                    <Button
+                      title={`+ Create "${query || "New Contact"}"`}
+                      variant="secondary"
+                      onPress={() => {
+                        setNewName(query);
+                        setMode("create");
+                      }}
+                    />
+                  </View>
                 ) : null}
 
                 {searchedUser ? (
@@ -208,60 +215,38 @@ export function UserLookupModal({
             ) : (
               <View className="gap-3">
                 <Text className="text-xs text-muted">
-                  Match people in your address book who have registered PayPilot accounts.
+                  Add a contact by name. Phone number and email are completely optional.
                 </Text>
 
-                {loading ? (
-                  <LoadingState label="Scanning contacts..." />
-                ) : null}
+                <Input
+                  label="Contact Name *"
+                  placeholder="e.g. Rahul"
+                  value={newName}
+                  onChangeText={setNewName}
+                />
 
-                {error ? (
-                  <Text className="text-sm text-danger">{error}</Text>
-                ) : null}
+                <Input
+                  label="Phone Number (Optional)"
+                  placeholder="e.g. +1 555 123 4567"
+                  value={newPhone}
+                  onChangeText={setNewPhone}
+                  keyboardType="phone-pad"
+                />
 
-                {contactsScanned && matchedContacts.length === 0 && !loading ? (
-                  <Card>
-                    <Text className="text-sm text-muted">
-                      No contacts found on PayPilot. Try searching by email or name.
-                    </Text>
-                  </Card>
-                ) : null}
+                <Input
+                  label="Email (Optional)"
+                  placeholder="e.g. rahul@example.com"
+                  value={newEmail}
+                  onChangeText={setNewEmail}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                />
 
-                {matchedContacts.map((contact) => (
-                  <Card key={contact.id} className="gap-2 bg-surface2">
-                    <View className="flex-row items-center justify-between">
-                      <View className="flex-row items-center gap-3">
-                        <View className="h-10 w-10 items-center justify-center rounded-full bg-primary/20">
-                          <Text className="text-base font-bold text-primary">
-                            {contact.name.slice(0, 1).toUpperCase()}
-                          </Text>
-                        </View>
-                        <View>
-                          <Text className="text-base font-semibold text-text">
-                            {contact.name}
-                          </Text>
-                          {contact.email ? (
-                            <Text className="text-xs text-muted">
-                              {contact.email}
-                            </Text>
-                          ) : null}
-                        </View>
-                      </View>
-                      <Button
-                        title="Select"
-                        onPress={() => {
-                          onSelect(contact);
-                          handleClose();
-                        }}
-                      />
-                    </View>
-                  </Card>
-                ))}
+                {error ? <Text className="text-sm text-danger">{error}</Text> : null}
 
                 <Button
-                  title="Rescan Contacts"
-                  variant="secondary"
-                  onPress={handleScanContacts}
+                  title="Add & Select Contact"
+                  onPress={handleCreateContact}
                 />
               </View>
             )}

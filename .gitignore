@@ -8,6 +8,8 @@ build/
 .next/
 out/
 
+context/UI-Design
+
 # Environment
 .env
 .env.local

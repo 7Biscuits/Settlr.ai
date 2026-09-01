@@ -1,19 +1,30 @@
 import React, { useCallback, useState } from "react";
-import { Image, Modal, Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
+import {
+  Image,
+  Modal,
+  Platform,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Feather, Ionicons } from "@expo/vector-icons";
+
 import { getExpense, deleteExpense } from "../../../src/api/expenses";
 import type { ExpenseWithSplits } from "../../../src/api/types";
-import { Card } from "../../../src/components/Card";
-import { Button } from "../../../src/components/Button";
 import { ConfirmSheet } from "../../../src/components/ConfirmSheet";
-import { LoadingState, ErrorState } from "../../../src/components/States";
+import { LoadingState } from "../../../src/components/States";
 import { formatAmount } from "../../../src/lib/money";
 
 export default function ExpenseDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const topInset = Math.max(insets.top, Platform.OS === "ios" ? 44 : 24);
 
   const [expense, setExpense] = useState<ExpenseWithSplits | null>(null);
   const [loading, setLoading] = useState(true);
@@ -58,143 +69,131 @@ export default function ExpenseDetailScreen() {
   }
 
   if (loading) return <LoadingState label="Loading expense..." />;
-  if (error && !expense) return <ErrorState message={error} onRetry={load} />;
-  if (!expense) return <ErrorState message="Expense not found" />;
+  if (!expense) return <Text style={styles.errorText}>Expense not found</Text>;
 
   return (
-    <ScrollView
-      className="flex-1 bg-bg"
-      style={{ paddingTop: insets.top }}
-      contentContainerStyle={{ padding: 16, gap: 16, paddingBottom: 40 }}
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={async () => {
-            setRefreshing(true);
-            await load();
-            setRefreshing(false);
-          }}
-          tintColor="#3b82f6"
-        />
-      }
-    >
-      <View className="flex-row items-center justify-between">
-        <View className="flex-row items-center gap-2">
-          <Button title="←" variant="ghost" onPress={() => router.back()} />
-          <Text className="text-2xl font-bold text-text">Expense Details</Text>
-        </View>
-        <View className="flex-row gap-2">
-          <Button
-            title="Edit"
-            variant="secondary"
-            onPress={() => router.push(`/(app)/expense/edit/${expense.id}`)}
+    <View style={styles.safeArea}>
+      <ScrollView
+        bounces={false}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={async () => {
+              setRefreshing(true);
+              await load();
+              setRefreshing(false);
+            }}
+            tintColor="#00F58D"
           />
-          <Button
-            title="Delete"
-            variant="danger"
-            onPress={() => setDeleteOpen(true)}
-          />
-        </View>
-      </View>
-
-      {error ? <ErrorState message={error} /> : null}
-
-      {/* Main Expense Card */}
-      <Card className="gap-2 bg-surface2">
-        <View className="flex-row items-center justify-between">
-          <View className="rounded bg-primary/20 px-2 py-1">
-            <Text className="text-xs font-bold uppercase text-primary">
-              {expense.category ?? "general"}
-            </Text>
+        }>
+        {/* Top Header Section */}
+        <View style={[styles.topSection, { paddingTop: topInset + 4 }]}>
+          <View style={styles.headerRow}>
+            <Pressable hitSlop={14} onPress={() => router.back()} style={styles.iconButton}>
+              <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
+            </Pressable>
+            <Text style={styles.headerTitle}>EXPENSE DETAILS</Text>
+            <View style={styles.headerActions}>
+              <Pressable
+                onPress={() => router.push(`/(app)/expense/edit/${expense.id}`)}
+                style={styles.actionPill}>
+                <Feather name="edit-2" size={16} color="#0F172A" />
+              </Pressable>
+              <Pressable
+                onPress={() => setDeleteOpen(true)}
+                style={styles.deletePill}>
+                <Feather name="trash-2" size={16} color="#FFFFFF" />
+              </Pressable>
+            </View>
           </View>
-          <Text className="text-xs text-muted">
-            {new Date(expense.createdAt).toLocaleDateString()}
-          </Text>
-        </View>
 
-        <Text className="text-2xl font-bold text-text">
-          {expense.description}
-        </Text>
-
-        <Text className="text-3xl font-extrabold text-text">
-          {formatAmount(expense.amount)}
-        </Text>
-
-        <View className="flex-row items-center gap-2 pt-1 border-t border-border">
-          <Text className="text-xs text-muted">Split Type:</Text>
-          <Text className="text-xs font-semibold uppercase text-text">
-            {expense.splitType}
-          </Text>
-        </View>
-      </Card>
-
-      {/* Receipt Image Card */}
-      {expense.receiptUrl ? (
-        <Card className="gap-2">
-          <Text className="text-base font-semibold text-text">Attached Receipt</Text>
-          <Pressable
-            onPress={() => setReceiptModalOpen(true)}
-            className="items-center overflow-hidden rounded-xl border border-border bg-surface2 active:opacity-80"
-          >
-            <Image
-              source={{ uri: expense.receiptUrl }}
-              className="h-48 w-full"
-              resizeMode="cover"
-            />
-            <View className="w-full bg-surface p-2 text-center">
-              <Text className="text-xs text-primary font-medium text-center">
-                Tap to view full-size receipt
+          {/* Amount Display */}
+          <View style={styles.amountDisplay}>
+            <View style={styles.categoryBadge}>
+              <Text style={styles.categoryBadgeText}>
+                {expense.category || "GENERAL"}
               </Text>
             </View>
-          </Pressable>
-        </Card>
-      ) : null}
+            <Text style={styles.amountText}>{formatAmount(expense.amount)}</Text>
+            <Text style={styles.expenseDesc}>{expense.description}</Text>
+          </View>
+        </View>
 
-      {/* Split Breakdown */}
-      <View className="gap-2">
-        <Text className="text-lg font-semibold text-text">Split Breakdown</Text>
-        <Card>
-          {expense.splits.map((s) => (
-            <View
-              key={s.userId}
-              className="flex-row items-center justify-between border-b border-border py-2.5 last:border-0"
-            >
-              <View className="gap-0.5">
-                <Text className="text-base font-medium text-text">
-                  {s.userId === expense.paidBy ? "Payer (Advanced funds)" : "Participant"}
-                </Text>
-                {s.percentage ? (
-                  <Text className="text-xs text-muted">Share: {s.percentage}%</Text>
-                ) : s.shares ? (
-                  <Text className="text-xs text-muted">Weight: {s.shares} share(s)</Text>
-                ) : null}
-              </View>
-              <Text className="text-base font-bold text-text">
-                {formatAmount(s.amountOwed)}
+        {/* Content Card */}
+        <View style={styles.bottomCard}>
+          {error ? <Text style={styles.errorBanner}>{error}</Text> : null}
+
+          {/* Info Card */}
+          <View style={styles.infoCard}>
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>Split Type</Text>
+              <Text style={styles.infoValue}>{expense.splitType.toUpperCase()}</Text>
+            </View>
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>Date Logged</Text>
+              <Text style={styles.infoValue}>
+                {new Date(expense.createdAt).toLocaleDateString()}
               </Text>
             </View>
-          ))}
-        </Card>
-      </View>
+          </View>
 
-      {/* Full-Screen Receipt Preview Modal */}
+          {/* Splits Breakdown */}
+          <View style={styles.splitsSection}>
+            <Text style={styles.sectionTitle}>PARTICIPANT BREAKDOWN</Text>
+            <View style={styles.splitsList}>
+              {expense.splits.map((s) => (
+                <View key={s.userId} style={styles.splitRow}>
+                  <View style={styles.splitLeft}>
+                    <Text style={styles.splitRole}>
+                      {s.userId === expense.paidBy ? "Payer (Paid full)" : "Participant"}
+                    </Text>
+                    {s.percentage ? (
+                      <Text style={styles.splitSub}>Share: {s.percentage}%</Text>
+                    ) : s.shares ? (
+                      <Text style={styles.splitSub}>Weight: {s.shares} share(s)</Text>
+                    ) : null}
+                  </View>
+                  <Text style={styles.splitAmount}>{formatAmount(s.amountOwed)}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+
+          {/* Attached Receipt */}
+          {expense.receiptUrl ? (
+            <View style={styles.receiptSection}>
+              <Text style={styles.sectionTitle}>ATTACHED RECEIPT</Text>
+              <Pressable
+                onPress={() => setReceiptModalOpen(true)}
+                style={styles.receiptContainer}>
+                <Image source={{ uri: expense.receiptUrl }} style={styles.receiptImg} />
+                <View style={styles.tapToView}>
+                  <Text style={styles.tapToViewText}>Tap to view full receipt 🔍</Text>
+                </View>
+              </Pressable>
+            </View>
+          ) : null}
+        </View>
+      </ScrollView>
+
+      {/* Full Size Receipt Modal */}
       <Modal
         visible={receiptModalOpen}
         transparent
         animationType="fade"
-        onRequestClose={() => setReceiptModalOpen(false)}
-      >
-        <View className="flex-1 items-center justify-center bg-black/95 p-4">
+        onRequestClose={() => setReceiptModalOpen(false)}>
+        <View style={styles.modalOverlay}>
           <Pressable
             onPress={() => setReceiptModalOpen(false)}
-            className="absolute right-4 top-12 z-10 rounded-full bg-surface2 px-4 py-2"
-          >
-            <Text className="text-base font-bold text-text">Close ✕</Text>
+            style={styles.modalCloseButton}>
+            <Text style={styles.modalCloseText}>Close ✕</Text>
           </Pressable>
           {expense.receiptUrl ? (
             <Image
               source={{ uri: expense.receiptUrl }}
-              className="h-4/5 w-full rounded-2xl"
+              style={styles.modalImg}
               resizeMode="contain"
             />
           ) : null}
@@ -205,7 +204,7 @@ export default function ExpenseDetailScreen() {
       <ConfirmSheet
         visible={deleteOpen}
         title="Delete Expense?"
-        description="This will delete this expense record and reverse all corresponding balance debts in the group."
+        description="This will permanently delete this expense and revert all debt calculations."
         rows={[
           { label: "Description", value: expense.description },
           { label: "Amount", value: formatAmount(expense.amount) },
@@ -216,6 +215,219 @@ export default function ExpenseDetailScreen() {
         onConfirm={handleDelete}
         onCancel={() => setDeleteOpen(false)}
       />
-    </ScrollView>
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: "#151C8A",
+  },
+  scrollContent: {
+    flexGrow: 1,
+    backgroundColor: "#F3F6FB",
+  },
+  topSection: {
+    backgroundColor: "#151C8A",
+    paddingBottom: 24,
+    paddingHorizontal: 20,
+  },
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 16,
+  },
+  iconButton: {
+    width: 36,
+    height: 36,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  headerTitle: {
+    color: "#FFFFFF",
+    fontSize: 18,
+    fontWeight: "900",
+    letterSpacing: 0.5,
+  },
+  headerActions: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  actionPill: {
+    backgroundColor: "#00F58D",
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  deletePill: {
+    backgroundColor: "#EF4444",
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  amountDisplay: {
+    alignItems: "center",
+    gap: 6,
+    marginVertical: 10,
+  },
+  categoryBadge: {
+    backgroundColor: "rgba(255, 255, 255, 0.15)",
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 10,
+  },
+  categoryBadgeText: {
+    color: "#00F58D",
+    fontSize: 11,
+    fontWeight: "900",
+  },
+  amountText: {
+    color: "#FFFFFF",
+    fontSize: 40,
+    fontWeight: "900",
+  },
+  expenseDesc: {
+    color: "#CBD5E1",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  bottomCard: {
+    backgroundColor: "#FFFFFF",
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    paddingHorizontal: 20,
+    paddingTop: 24,
+    paddingBottom: 32,
+    flex: 1,
+    gap: 18,
+  },
+  errorBanner: {
+    backgroundColor: "#FEE2E2",
+    color: "#DC2626",
+    fontSize: 13,
+    fontWeight: "600",
+    padding: 10,
+    borderRadius: 10,
+    textAlign: "center",
+  },
+  errorText: {
+    color: "#DC2626",
+    textAlign: "center",
+    marginTop: 40,
+  },
+  infoCard: {
+    backgroundColor: "#F8FAFC",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    borderRadius: 16,
+    padding: 14,
+    gap: 10,
+  },
+  infoRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  infoLabel: {
+    fontSize: 13,
+    color: "#64748B",
+    fontWeight: "600",
+  },
+  infoValue: {
+    fontSize: 13.5,
+    color: "#0F172A",
+    fontWeight: "800",
+  },
+  splitsSection: {
+    gap: 12,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: "900",
+    color: "#0F172A",
+    letterSpacing: 0.5,
+  },
+  splitsList: {
+    gap: 10,
+  },
+  splitRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#F8FAFC",
+    padding: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+  },
+  splitLeft: {
+    gap: 2,
+  },
+  splitRole: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#0F172A",
+  },
+  splitSub: {
+    fontSize: 12,
+    color: "#64748B",
+  },
+  splitAmount: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: "#0F172A",
+  },
+  receiptSection: {
+    gap: 10,
+  },
+  receiptContainer: {
+    borderRadius: 16,
+    overflow: "hidden",
+    borderWidth: 1.5,
+    borderColor: "#E2E8F0",
+  },
+  receiptImg: {
+    width: "100%",
+    height: 180,
+  },
+  tapToView: {
+    backgroundColor: "#EFF6FF",
+    paddingVertical: 8,
+    alignItems: "center",
+  },
+  tapToViewText: {
+    color: "#2738F5",
+    fontSize: 12.5,
+    fontWeight: "700",
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.95)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  modalCloseButton: {
+    position: "absolute",
+    top: 50,
+    right: 20,
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  modalCloseText: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  modalImg: {
+    width: "100%",
+    height: "80%",
+  },
+});

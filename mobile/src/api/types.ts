@@ -205,7 +205,7 @@ export interface RealtimeMessageEvent {
 export interface ContactMatchUser {
   id: string;
   name: string;
-  avatarUrl: string | null;
+  avatarUrl?: string | null;
   phone?: string | null;
   email?: string | null;
 }

@@ -1,33 +1,31 @@
 import React, { useState } from "react";
 import {
+  Platform,
   Pressable,
   ScrollView,
+  StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Input } from "../../../src/components/Input";
-import { Button } from "../../../src/components/Button";
-import { Card } from "../../../src/components/Card";
-import { LoadingState } from "../../../src/components/States";
-import { lookupUser, bulkLookupContacts } from "../../../src/api/users";
+import { Feather, Ionicons } from "@expo/vector-icons";
+
+import { lookupUser } from "../../../src/api/users";
 import { initiateConversation } from "../../../src/api/messages";
-import { ensureContactsPermission, searchContacts } from "../../../src/lib/contacts";
 import type { ContactMatchUser } from "../../../src/api/types";
 
 export default function NewMessageScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const topInset = Math.max(insets.top, Platform.OS === "ios" ? 44 : 24);
 
-  const [tab, setTab] = useState<"search" | "contacts">("search");
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [startingChat, setStartingChat] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchedUser, setSearchedUser] = useState<ContactMatchUser | null>(null);
-  const [matchedContacts, setMatchedContacts] = useState<ContactMatchUser[]>([]);
-  const [contactsScanned, setContactsScanned] = useState(false);
 
   async function handleSearch() {
     const q = query.trim();
@@ -49,47 +47,7 @@ export default function NewMessageScreen() {
       setSearchedUser(res.user);
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "No registered user found.",
-      );
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handleScanContacts() {
-    setLoading(true);
-    setError(null);
-    try {
-      const granted = await ensureContactsPermission();
-      if (!granted) {
-        setError("Contacts permission is required to match registered users.");
-        setLoading(false);
-        return;
-      }
-      const localContacts = await searchContacts("");
-      const phones: string[] = [];
-      const emails: string[] = [];
-      for (const c of localContacts) {
-        phones.push(...c.phoneNumbers);
-        emails.push(...c.emails);
-      }
-
-      if (phones.length === 0 && emails.length === 0) {
-        setError("No contacts found on device with phone or email.");
-        setContactsScanned(true);
-        setLoading(false);
-        return;
-      }
-
-      const res = await bulkLookupContacts({
-        phones: phones.slice(0, 300),
-        emails: emails.slice(0, 300),
-      });
-      setMatchedContacts(res.matched);
-      setContactsScanned(true);
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Failed to scan device contacts.",
+        err instanceof Error ? err.message : "No registered Settlr user found.",
       );
     } finally {
       setLoading(false);
@@ -110,143 +68,225 @@ export default function NewMessageScreen() {
   }
 
   return (
-    <View className="flex-1 bg-bg" style={{ paddingTop: insets.top }}>
-      <View className="flex-row items-center gap-2 border-b border-border p-4">
-        <Button
-          title="←"
-          variant="ghost"
-          onPress={() => router.back()}
-        />
-        <Text className="text-2xl font-bold text-text">New Message</Text>
-      </View>
-
-      <View className="p-4 gap-3">
-        <View className="flex-row gap-2">
-          <View className="flex-1">
-            <Button
-              title="Search User"
-              variant={tab === "search" ? "primary" : "secondary"}
-              onPress={() => {
-                setTab("search");
-                setError(null);
-              }}
-            />
-          </View>
-          <View className="flex-1">
-            <Button
-              title="Device Contacts"
-              variant={tab === "contacts" ? "primary" : "secondary"}
-              onPress={() => {
-                setTab("contacts");
-                setError(null);
-                if (!contactsScanned) void handleScanContacts();
-              }}
-            />
+    <View style={styles.safeArea}>
+      <ScrollView
+        bounces={false}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}>
+        {/* Header */}
+        <View style={[styles.topSection, { paddingTop: topInset + 4 }]}>
+          <View style={styles.headerRow}>
+            <Pressable hitSlop={14} onPress={() => router.back()} style={styles.iconButton}>
+              <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
+            </Pressable>
+            <Text style={styles.headerTitle}>NEW CONVERSATION</Text>
+            <View style={styles.iconButton} />
           </View>
         </View>
 
-        {error ? <Text className="text-sm text-danger">{error}</Text> : null}
+        {/* Content Card */}
+        <View style={styles.bottomCard}>
+          <View style={styles.searchCard}>
+            <Text style={styles.searchTitle}>FIND USER OR CONTACT</Text>
+            <TextInput
+              value={query}
+              onChangeText={(t) => {
+                setQuery(t);
+                if (error) setError(null);
+              }}
+              placeholder="e.g. Alex or alex@settlr.ai"
+              placeholderTextColor="#94A3B8"
+              autoCapitalize="none"
+              style={styles.textInput}
+            />
+            <Pressable
+              onPress={handleSearch}
+              disabled={loading || !query.trim()}
+              style={[
+                styles.searchButton,
+                (!query.trim() || loading) && styles.searchButtonDisabled,
+              ]}>
+              <Text style={styles.searchButtonText}>
+                {loading ? "Searching..." : "Search Settlr Users 🔍"}
+              </Text>
+            </Pressable>
+          </View>
 
-        <ScrollView contentContainerStyle={{ gap: 12, paddingBottom: 40 }}>
-          {tab === "search" ? (
-            <View className="gap-3">
-              <Input
-                label="Find user by Email, Phone, or Name"
-                placeholder="e.g. john@example.com"
-                value={query}
-                onChangeText={(t) => {
-                  setQuery(t);
-                  if (error) setError(null);
-                }}
-                autoCapitalize="none"
-              />
-              <Button
-                title="Search"
-                loading={loading}
-                onPress={handleSearch}
-              />
+          {error ? <Text style={styles.errorBanner}>{error}</Text> : null}
 
-              {searchedUser ? (
-                <Card className="gap-2 border-primary/40 bg-surface2">
-                  <View className="flex-row items-center justify-between">
-                    <View className="flex-row items-center gap-3">
-                      <View className="h-10 w-10 items-center justify-center rounded-full bg-primary/20">
-                        <Text className="text-base font-bold text-primary">
-                          {searchedUser.name.slice(0, 1).toUpperCase()}
-                        </Text>
-                      </View>
-                      <View>
-                        <Text className="text-base font-semibold text-text">
-                          {searchedUser.name}
-                        </Text>
-                        {searchedUser.email ? (
-                          <Text className="text-xs text-muted">
-                            {searchedUser.email}
-                          </Text>
-                        ) : null}
-                      </View>
-                    </View>
-                    <Button
-                      title="Chat"
-                      loading={startingChat}
-                      onPress={() => handleStartConversation(searchedUser.id)}
-                    />
-                  </View>
-                </Card>
-              ) : null}
-            </View>
-          ) : (
-            <View className="gap-3">
-              {loading ? (
-                <LoadingState label="Matching contacts..." />
-              ) : null}
-
-              {contactsScanned && matchedContacts.length === 0 && !loading ? (
-                <Card>
-                  <Text className="text-sm text-muted">
-                    No contacts found on PayPilot. Try searching by email above.
+          {searchedUser ? (
+            <View style={styles.userFoundCard}>
+              <View style={styles.userLeft}>
+                <View style={styles.userAvatar}>
+                  <Text style={styles.userInitial}>
+                    {searchedUser.name.slice(0, 1).toUpperCase()}
                   </Text>
-                </Card>
-              ) : null}
+                </View>
+                <View>
+                  <Text style={styles.userName}>{searchedUser.name}</Text>
+                  {searchedUser.email ? (
+                    <Text style={styles.userSub}>{searchedUser.email}</Text>
+                  ) : null}
+                  {searchedUser.phone ? (
+                    <Text style={styles.userSub}>{searchedUser.phone}</Text>
+                  ) : null}
+                </View>
+              </View>
 
-              {matchedContacts.map((contact) => (
-                <Card key={contact.id} className="gap-2 bg-surface2">
-                  <View className="flex-row items-center justify-between">
-                    <View className="flex-row items-center gap-3">
-                      <View className="h-10 w-10 items-center justify-center rounded-full bg-primary/20">
-                        <Text className="text-base font-bold text-primary">
-                          {contact.name.slice(0, 1).toUpperCase()}
-                        </Text>
-                      </View>
-                      <View>
-                        <Text className="text-base font-semibold text-text">
-                          {contact.name}
-                        </Text>
-                        {contact.email ? (
-                          <Text className="text-xs text-muted">
-                            {contact.email}
-                          </Text>
-                        ) : null}
-                      </View>
-                    </View>
-                    <Button
-                      title="Chat"
-                      loading={startingChat}
-                      onPress={() => handleStartConversation(contact.id)}
-                    />
-                  </View>
-                </Card>
-              ))}
-
-              <Button
-                title="Rescan Contacts"
-                variant="secondary"
-                onPress={handleScanContacts}
-              />
+              <Pressable
+                onPress={() => handleStartConversation(searchedUser.id)}
+                disabled={startingChat}
+                style={styles.startChatButton}>
+                <Text style={styles.startChatButtonText}>
+                  {startingChat ? "Opening..." : "Chat 👉"}
+                </Text>
+              </Pressable>
             </View>
-          )}
-        </ScrollView>
-      </View>
+          ) : null}
+        </View>
+      </ScrollView>
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: "#151C8A",
+  },
+  scrollContent: {
+    flexGrow: 1,
+    backgroundColor: "#F3F6FB",
+  },
+  topSection: {
+    backgroundColor: "#151C8A",
+    paddingBottom: 22,
+    paddingHorizontal: 20,
+  },
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 8,
+  },
+  iconButton: {
+    width: 36,
+    height: 36,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  headerTitle: {
+    color: "#FFFFFF",
+    fontSize: 18,
+    fontWeight: "900",
+    letterSpacing: 0.5,
+  },
+  bottomCard: {
+    backgroundColor: "#FFFFFF",
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    paddingHorizontal: 20,
+    paddingTop: 24,
+    paddingBottom: 32,
+    flex: 1,
+    gap: 16,
+  },
+  searchCard: {
+    backgroundColor: "#F8FAFC",
+    borderWidth: 1.5,
+    borderColor: "#E2E8F0",
+    borderRadius: 20,
+    padding: 16,
+    gap: 10,
+  },
+  searchTitle: {
+    fontSize: 14,
+    fontWeight: "900",
+    color: "#0F172A",
+    letterSpacing: 0.5,
+  },
+  textInput: {
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1.5,
+    borderColor: "#CBD5E1",
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    height: 48,
+    fontSize: 15,
+    color: "#0F172A",
+    fontWeight: "600",
+  },
+  searchButton: {
+    backgroundColor: "#2738F5",
+    borderRadius: 12,
+    height: 46,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  searchButtonDisabled: {
+    backgroundColor: "#94A3B8",
+  },
+  searchButtonText: {
+    color: "#FFFFFF",
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  errorBanner: {
+    backgroundColor: "#FEE2E2",
+    color: "#DC2626",
+    fontSize: 13,
+    fontWeight: "600",
+    padding: 10,
+    borderRadius: 10,
+    textAlign: "center",
+  },
+  userFoundCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#EFF6FF",
+    borderWidth: 1.5,
+    borderColor: "#BFDBFE",
+    borderRadius: 18,
+    padding: 14,
+  },
+  userLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    flex: 1,
+  },
+  userAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "#2738F5",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  userInitial: {
+    color: "#FFFFFF",
+    fontSize: 18,
+    fontWeight: "900",
+  },
+  userName: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: "#0F172A",
+  },
+  userSub: {
+    fontSize: 12,
+    color: "#64748B",
+  },
+  startChatButton: {
+    backgroundColor: "#00F58D",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 10,
+  },
+  startChatButtonText: {
+    color: "#0F172A",
+    fontSize: 13.5,
+    fontWeight: "800",
+  },
+});

@@ -1,7 +1,17 @@
 import React, { useCallback, useMemo, useState } from "react";
-import { ScrollView, Text, View } from "react-native";
+import {
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Feather, Ionicons } from "@expo/vector-icons";
+
 import { getGroup } from "../../../../src/api/groups";
 import { createExpense } from "../../../../src/api/expenses";
 import {
@@ -10,12 +20,9 @@ import {
   type GroupMember,
   type SplitType,
 } from "../../../../src/api/types";
-import { Card } from "../../../../src/components/Card";
-import { Button } from "../../../../src/components/Button";
-import { Input } from "../../../../src/components/Input";
 import { ReceiptPicker } from "../../../../src/components/ReceiptPicker";
 import { ConfirmSheet } from "../../../../src/components/ConfirmSheet";
-import { LoadingState, ErrorState } from "../../../../src/components/States";
+import { LoadingState } from "../../../../src/components/States";
 import {
   formatAmount,
   parseAmountToMinor,
@@ -32,6 +39,7 @@ export default function AddExpenseScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const topInset = Math.max(insets.top, Platform.OS === "ios" ? 44 : 24);
 
   const [members, setMembers] = useState<GroupMember[]>([]);
   const [loading, setLoading] = useState(true);
@@ -44,7 +52,6 @@ export default function AddExpenseScreen() {
   const [paidBy, setPaidBy] = useState<string | null>(null);
   const [selected, setSelected] = useState<Record<string, boolean>>({});
 
-  // Split Type: "equal" | "custom" | "percentage" | "shares"
   const [splitType, setSplitType] = useState<SplitType>("equal");
   const [customAmounts, setCustomAmounts] = useState<Record<string, string>>({});
   const [percentages, setPercentages] = useState<Record<string, string>>({});
@@ -87,7 +94,6 @@ export default function AddExpenseScreen() {
     [members, selected],
   );
 
-  // Split previews
   const equalPreview = useMemo(() => {
     if (!amountMinor || participantIds.length === 0) return null;
     return splitEqualPreview(amountMinor, participantIds.length);
@@ -191,175 +197,152 @@ export default function AddExpenseScreen() {
   }
 
   if (loading) return <LoadingState label="Loading group..." />;
-  if (loadError) return <ErrorState message={loadError} onRetry={load} />;
 
   return (
-    <ScrollView
-      className="flex-1 bg-bg"
-      style={{ paddingTop: insets.top }}
-      contentContainerStyle={{ padding: 16, gap: 16, paddingBottom: 40 }}
-    >
-      <View className="flex-row items-center gap-2">
-        <Button title="←" variant="ghost" onPress={() => router.back()} />
-        <Text className="text-2xl font-bold text-text">Add Expense</Text>
-      </View>
+    <View style={styles.safeArea}>
+      <ScrollView
+        bounces={false}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}>
+        {/* Top Header Section */}
+        <View style={[styles.topSection, { paddingTop: topInset + 4 }]}>
+          <View style={styles.headerRow}>
+            <Pressable hitSlop={14} onPress={() => router.back()} style={styles.iconButton}>
+              <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
+            </Pressable>
+            <Text style={styles.headerTitle}>ADD SPLIT EXPENSE</Text>
+            <View style={styles.iconButton} />
+          </View>
+        </View>
 
-      <Card className="gap-3">
-        <Input
-          label="Description"
-          value={description}
-          onChangeText={setDescription}
-          placeholder="e.g. Dinner with team"
-        />
-        <Input
-          label="Amount"
-          value={amountText}
-          onChangeText={setAmountText}
-          keyboardType="decimal-pad"
-          placeholder="0.00"
-        />
-      </Card>
+        {/* Content Body */}
+        <View style={styles.bottomCard}>
+          {/* Main Inputs Card */}
+          <View style={styles.inputCard}>
+            <Text style={styles.cardHeader}>EXPENSE DETAILS</Text>
 
-      {/* Category Picker */}
-      <Card className="gap-2">
-        <Text className="text-base font-medium text-text">Category</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 4 }}>
-          {EXPENSE_CATEGORIES.map((cat) => (
-            <Button
-              key={cat}
-              title={cat.charAt(0).toUpperCase() + cat.slice(1)}
-              variant={category === cat ? "primary" : "secondary"}
-              onPress={() => setCategory(cat)}
-            />
-          ))}
-        </ScrollView>
-      </Card>
-
-      {/* Payer Picker */}
-      <Card className="gap-2">
-        <Text className="text-base font-medium text-text">Paid by</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 4 }}>
-          {members.map((m) => (
-            <Button
-              key={m.id}
-              title={m.name}
-              variant={paidBy === m.id ? "primary" : "secondary"}
-              onPress={() => setPaidBy(m.id)}
-            />
-          ))}
-        </ScrollView>
-      </Card>
-
-      {/* Split Type Selector */}
-      <Card className="gap-3">
-        <Text className="text-base font-medium text-text">Split Method</Text>
-        <View className="flex-row gap-2">
-          {(["equal", "custom", "percentage", "shares"] as SplitType[]).map((t) => (
-            <View key={t} className="flex-1">
-              <Button
-                title={t.charAt(0).toUpperCase() + t.slice(1)}
-                variant={splitType === t ? "primary" : "secondary"}
-                onPress={() => setSplitType(t)}
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Description</Text>
+              <TextInput
+                value={description}
+                onChangeText={setDescription}
+                placeholder="e.g. Dinner, Drinks, Fuel"
+                placeholderTextColor="#94A3B8"
+                style={styles.textInput}
               />
             </View>
-          ))}
-        </View>
 
-        <View className="gap-2 pt-2">
-          {members.map((m, index) => {
-            const isOn = !!selected[m.id];
-            return (
-              <View key={m.id} className="gap-1 border-b border-border py-2.5 last:border-0">
-                <View className="flex-row items-center justify-between">
-                  <Text className="text-text font-medium">{m.name}</Text>
-                  <Button
-                    title={isOn ? "Included ✓" : "Excluded"}
-                    variant={isOn ? "secondary" : "ghost"}
-                    onPress={() => setSelected((s) => ({ ...s, [m.id]: !isOn }))}
-                  />
-                </View>
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Total Amount ($)</Text>
+              <TextInput
+                value={amountText}
+                onChangeText={setAmountText}
+                keyboardType="decimal-pad"
+                placeholder="0.00"
+                placeholderTextColor="#94A3B8"
+                style={styles.textInput}
+              />
+            </View>
+          </View>
 
-                {isOn ? (
-                  <View className="mt-1">
-                    {splitType === "equal" && equalPreview ? (
-                      <Text className="text-xs text-muted">
-                        owes {formatAbsAmount(equalPreview.perPersonMax)}
+          {/* Category Picker */}
+          <View style={styles.inputCard}>
+            <Text style={styles.cardHeader}>CATEGORY</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryPillsRow}>
+              {EXPENSE_CATEGORIES.map((cat) => (
+                <Pressable
+                  key={cat}
+                  onPress={() => setCategory(cat)}
+                  style={[styles.catPill, category === cat && styles.catPillActive]}>
+                  <Text style={[styles.catPillText, category === cat && styles.catPillTextActive]}>
+                    {cat.toUpperCase()}
+                  </Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </View>
+
+          {/* Paid By */}
+          <View style={styles.inputCard}>
+            <Text style={styles.cardHeader}>PAID BY</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryPillsRow}>
+              {members.map((m) => (
+                <Pressable
+                  key={m.id}
+                  onPress={() => setPaidBy(m.id)}
+                  style={[styles.catPill, paidBy === m.id && styles.catPillActive]}>
+                  <Text style={[styles.catPillText, paidBy === m.id && styles.catPillTextActive]}>
+                    {m.name}
+                  </Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </View>
+
+          {/* Split Type Selector */}
+          <View style={styles.inputCard}>
+            <Text style={styles.cardHeader}>SPLIT METHOD</Text>
+            <View style={styles.splitTabsRow}>
+              {(["equal", "custom", "percentage", "shares"] as SplitType[]).map((t) => (
+                <Pressable
+                  key={t}
+                  onPress={() => setSplitType(t)}
+                  style={[styles.splitTab, splitType === t && styles.splitTabActive]}>
+                  <Text style={[styles.splitTabText, splitType === t && styles.splitTabTextActive]}>
+                    {t.toUpperCase()}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+
+            {/* Member Toggles */}
+            <View style={styles.membersToggleList}>
+              {members.map((m) => {
+                const isOn = !!selected[m.id];
+                return (
+                  <View key={m.id} style={styles.memberToggleRow}>
+                    <View style={styles.memberLeft}>
+                      <Text style={styles.memberName}>{m.name}</Text>
+                      {isOn && splitType === "equal" && equalPreview ? (
+                        <Text style={styles.memberOweSub}>
+                          owes {formatAbsAmount(equalPreview.perPersonMax)}
+                        </Text>
+                      ) : null}
+                    </View>
+
+                    <Pressable
+                      onPress={() => setSelected((s) => ({ ...s, [m.id]: !isOn }))}
+                      style={[styles.includePill, isOn && styles.includePillActive]}>
+                      <Text style={[styles.includePillText, isOn && styles.includePillTextActive]}>
+                        {isOn ? "✓ Included" : "Excluded"}
                       </Text>
-                    ) : null}
-
-                    {splitType === "custom" ? (
-                      <Input
-                        label="Exact Amount"
-                        value={customAmounts[m.id] ?? ""}
-                        onChangeText={(t) =>
-                          setCustomAmounts((c) => ({ ...c, [m.id]: t }))
-                        }
-                        keyboardType="decimal-pad"
-                        placeholder="0.00"
-                      />
-                    ) : null}
-
-                    {splitType === "percentage" ? (
-                      <View className="gap-1">
-                        <Input
-                          label="Percentage (%)"
-                          value={percentages[m.id] ?? ""}
-                          onChangeText={(t) =>
-                            setPercentages((p) => ({ ...p, [m.id]: t }))
-                          }
-                          keyboardType="decimal-pad"
-                          placeholder="e.g. 50"
-                        />
-                        {percentagePreview && percentagePreview[index] !== undefined ? (
-                          <Text className="text-xs text-muted">
-                            = {formatAmount(percentagePreview[index] ?? 0)}
-                          </Text>
-                        ) : null}
-                      </View>
-                    ) : null}
-
-                    {splitType === "shares" ? (
-                      <View className="gap-1">
-                        <Input
-                          label="Shares / Weight"
-                          value={shares[m.id] ?? "1"}
-                          onChangeText={(t) =>
-                            setShares((s) => ({ ...s, [m.id]: t }))
-                          }
-                          keyboardType="number-pad"
-                          placeholder="1"
-                        />
-                        {sharesPreview && sharesPreview[index] !== undefined ? (
-                          <Text className="text-xs text-muted">
-                            = {formatAmount(sharesPreview[index] ?? 0)}
-                          </Text>
-                        ) : null}
-                      </View>
-                    ) : null}
+                    </Pressable>
                   </View>
-                ) : null}
-              </View>
-            );
-          })}
+                );
+              })}
+            </View>
+          </View>
+
+          {/* Receipt Picker */}
+          <View style={styles.inputCard}>
+            <ReceiptPicker receiptUrl={receiptUrl} onReceiptChange={setReceiptUrl} />
+          </View>
+
+          {error ? <Text style={styles.errorBanner}>{error}</Text> : null}
+
+          <Pressable
+            onPress={openConfirm}
+            style={styles.reviewButton}>
+            <Text style={styles.reviewButtonText}>Review Split Expense 👉</Text>
+          </Pressable>
         </View>
-      </Card>
+      </ScrollView>
 
-      {/* Receipt Attachment */}
-      <Card>
-        <ReceiptPicker
-          receiptUrl={receiptUrl}
-          onReceiptChange={setReceiptUrl}
-        />
-      </Card>
-
-      {error ? <Text className="text-sm text-danger">{error}</Text> : null}
-
-      <Button title="Review Expense" onPress={openConfirm} />
-
+      {/* Confirmation Sheet */}
       <ConfirmSheet
         visible={confirmOpen}
         title="Create Expense?"
-        description="PayPilot will record this expense and update all member balances."
+        description="Settlr AI will record this bill and update all friend balances."
         rows={[
           { label: "Description", value: description },
           { label: "Amount", value: amountMinor ? formatAmount(amountMinor) : "-" },
@@ -370,13 +353,196 @@ export default function AddExpenseScreen() {
           },
           { label: "Split Type", value: splitType.toUpperCase() },
           { label: "Participants", value: String(participantIds.length) },
-          { label: "Receipt", value: receiptUrl ? "Attached ✓" : "None" },
         ]}
-        confirmLabel="Create Expense"
+        confirmLabel="Record Expense"
         loading={submitting}
         onConfirm={submit}
         onCancel={() => setConfirmOpen(false)}
       />
-    </ScrollView>
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: "#151C8A",
+  },
+  scrollContent: {
+    flexGrow: 1,
+    backgroundColor: "#F3F6FB",
+  },
+  topSection: {
+    backgroundColor: "#151C8A",
+    paddingBottom: 22,
+    paddingHorizontal: 20,
+  },
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 8,
+  },
+  iconButton: {
+    width: 36,
+    height: 36,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  headerTitle: {
+    color: "#FFFFFF",
+    fontSize: 18,
+    fontWeight: "900",
+    letterSpacing: 0.5,
+  },
+  bottomCard: {
+    backgroundColor: "#FFFFFF",
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    paddingHorizontal: 20,
+    paddingTop: 24,
+    paddingBottom: 32,
+    flex: 1,
+    gap: 16,
+  },
+  inputCard: {
+    backgroundColor: "#F8FAFC",
+    borderWidth: 1.5,
+    borderColor: "#E2E8F0",
+    borderRadius: 20,
+    padding: 16,
+    gap: 12,
+  },
+  cardHeader: {
+    fontSize: 14,
+    fontWeight: "900",
+    color: "#0F172A",
+    letterSpacing: 0.5,
+  },
+  inputGroup: {
+    gap: 4,
+  },
+  label: {
+    fontSize: 12.5,
+    fontWeight: "600",
+    color: "#64748B",
+  },
+  textInput: {
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1.5,
+    borderColor: "#CBD5E1",
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    height: 48,
+    fontSize: 15,
+    color: "#0F172A",
+    fontWeight: "600",
+  },
+  categoryPillsRow: {
+    gap: 8,
+    paddingVertical: 2,
+  },
+  catPill: {
+    backgroundColor: "#EFF6FF",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 10,
+  },
+  catPillActive: {
+    backgroundColor: "#2738F5",
+  },
+  catPillText: {
+    fontSize: 12.5,
+    fontWeight: "700",
+    color: "#2738F5",
+  },
+  catPillTextActive: {
+    color: "#FFFFFF",
+  },
+  splitTabsRow: {
+    flexDirection: "row",
+    gap: 6,
+  },
+  splitTab: {
+    flex: 1,
+    backgroundColor: "#E2E8F0",
+    paddingVertical: 8,
+    borderRadius: 8,
+    alignItems: "center",
+  },
+  splitTabActive: {
+    backgroundColor: "#2738F5",
+  },
+  splitTabText: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: "#475569",
+  },
+  splitTabTextActive: {
+    color: "#FFFFFF",
+  },
+  membersToggleList: {
+    gap: 10,
+    marginTop: 6,
+  },
+  memberToggleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: "#E2E8F0",
+  },
+  memberLeft: {
+    gap: 2,
+  },
+  memberName: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#0F172A",
+  },
+  memberOweSub: {
+    fontSize: 12,
+    color: "#059669",
+    fontWeight: "600",
+  },
+  includePill: {
+    backgroundColor: "#E2E8F0",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  includePillActive: {
+    backgroundColor: "#00F58D",
+  },
+  includePillText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#475569",
+  },
+  includePillTextActive: {
+    color: "#0F172A",
+  },
+  errorBanner: {
+    backgroundColor: "#FEE2E2",
+    color: "#DC2626",
+    fontSize: 13,
+    fontWeight: "600",
+    padding: 10,
+    borderRadius: 10,
+    textAlign: "center",
+  },
+  reviewButton: {
+    backgroundColor: "#2738F5",
+    borderRadius: 14,
+    height: 52,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 8,
+  },
+  reviewButtonText: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "800",
+  },
+});

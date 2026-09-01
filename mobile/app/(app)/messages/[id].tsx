@@ -1,15 +1,19 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useRef, useState } from "react";
 import {
   FlatList,
   Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Feather, Ionicons } from "@expo/vector-icons";
+
 import {
   getConversation,
   listMessages,
@@ -22,9 +26,7 @@ import type {
 } from "../../../src/api/types";
 import { useAuth } from "../../../src/auth/AuthContext";
 import { useMessageEvents } from "../../../src/features/messages/useMessageEvents";
-import { Input } from "../../../src/components/Input";
-import { Button } from "../../../src/components/Button";
-import { LoadingState, ErrorState } from "../../../src/components/States";
+import { LoadingState } from "../../../src/components/States";
 
 function formatMessageTime(isoString: string): string {
   if (!isoString) return "";
@@ -37,6 +39,7 @@ export default function DirectMessageChatScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
+  const topInset = Math.max(insets.top, Platform.OS === "ios" ? 44 : 24);
 
   const [conversation, setConversation] = useState<ConversationDetail | null>(null);
   const [messages, setMessages] = useState<DirectMessage[]>([]);
@@ -56,7 +59,6 @@ export default function DirectMessageChatScreen() {
         listMessages(id, { limit: 50 }),
       ]);
       setConversation(conv);
-      // listMessages returns messages in descending order (newest first).
       setMessages(msgList.messages);
       await markMessagesAsRead(id).catch(() => {});
     } catch (err) {
@@ -72,7 +74,6 @@ export default function DirectMessageChatScreen() {
     }, [load]),
   );
 
-  // Real-time message receiver
   useMessageEvents(
     (newMsg) => {
       if (newMsg.conversationId === id) {
@@ -80,12 +81,9 @@ export default function DirectMessageChatScreen() {
         void markMessagesAsRead(id).catch(() => {});
       }
     },
-    (readData) => {
-      // If messages were read by partner, update isRead status on our sent messages
+    () => {
       setMessages((prev) =>
-        prev.map((m) =>
-          m.senderId === user?.id ? { ...m, isRead: true } : m,
-        ),
+        prev.map((m) => (m.senderId === user?.id ? { ...m, isRead: true } : m)),
       );
     },
   );
@@ -110,121 +108,277 @@ export default function DirectMessageChatScreen() {
   }
 
   if (loading) return <LoadingState label="Loading conversation..." />;
-  if (error && !conversation) return <ErrorState message={error} onRetry={load} />;
 
   const partner = conversation?.otherParticipant;
 
   return (
-    <KeyboardAvoidingView
-      className="flex-1 bg-bg"
-      style={{ paddingTop: insets.top }}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-    >
-      {/* Header */}
-      <View className="flex-row items-center justify-between border-b border-border p-3">
-        <View className="flex-row items-center gap-3">
-          <Button
-            title="←"
-            variant="ghost"
-            onPress={() => router.back()}
-          />
-          {partner?.avatarUrl ? (
-            <Image
-              source={{ uri: partner.avatarUrl }}
-              className="h-10 w-10 rounded-full bg-surface"
-            />
-          ) : (
-            <View className="h-10 w-10 items-center justify-center rounded-full bg-primary/20">
-              <Text className="text-base font-bold text-primary">
-                {partner?.name?.slice(0, 1).toUpperCase()}
-              </Text>
+    <View style={styles.safeArea}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        style={styles.keyboardView}>
+        {/* Top Header */}
+        <View style={[styles.topHeader, { paddingTop: topInset + 4 }]}>
+          <Pressable hitSlop={14} onPress={() => router.back()} style={styles.iconButton}>
+            <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
+          </Pressable>
+
+          <View style={styles.partnerInfo}>
+            {partner?.avatarUrl ? (
+              <Image source={{ uri: partner.avatarUrl }} style={styles.partnerAvatar} />
+            ) : (
+              <View style={styles.partnerAvatarFallback}>
+                <Text style={styles.partnerInitial}>
+                  {(partner?.name || "U")[0].toUpperCase()}
+                </Text>
+              </View>
+            )}
+            <View>
+              <Text style={styles.partnerName}>{partner?.name || "Chat"}</Text>
+              <Text style={styles.partnerEmail}>{partner?.email}</Text>
             </View>
-          )}
-          <View>
-            <Text className="text-base font-bold text-text">
-              {partner?.name ?? "Chat"}
-            </Text>
-            <Text className="text-xs text-muted">
-              {partner?.email}
-            </Text>
           </View>
+
+          <View style={styles.iconButton} />
         </View>
-      </View>
 
-      {/* Message List */}
-      <FlatList
-        ref={flatListRef}
-        inverted
-        data={messages}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={{ padding: 16, gap: 12 }}
-        renderItem={({ item }) => {
-          const isMine = item.senderId === user?.id;
-          return (
-            <View
-              className={`max-w-[80%] gap-1 ${
-                isMine ? "self-end items-end" : "self-start items-start"
-              }`}
-            >
+        {/* Message Stream */}
+        <FlatList
+          ref={flatListRef}
+          inverted
+          data={messages}
+          keyExtractor={(item) => item.id}
+          style={styles.messagesList}
+          contentContainerStyle={styles.messagesContent}
+          renderItem={({ item }) => {
+            const isMine = item.senderId === user?.id;
+            return (
               <View
-                className={`rounded-2xl px-4 py-2.5 ${
-                  isMine ? "bg-primary rounded-tr-sm" : "bg-surface2 rounded-tl-sm"
-                }`}
-              >
-                {item.messageType !== "text" ? (
-                  <View className="mb-1 self-start rounded bg-black/30 px-1.5 py-0.5">
-                    <Text className="text-[10px] uppercase font-bold text-white tracking-wide">
-                      {item.messageType.replace("_", " ")}
-                    </Text>
-                  </View>
-                ) : null}
+                style={[
+                  styles.messageRow,
+                  isMine ? styles.messageRowMine : styles.messageRowOther,
+                ]}>
+                <View
+                  style={[
+                    styles.messageBubble,
+                    isMine ? styles.bubbleMine : styles.bubbleOther,
+                  ]}>
+                  {item.messageType !== "text" ? (
+                    <View style={styles.typeBadge}>
+                      <Text style={styles.typeBadgeText}>
+                        {item.messageType.replace("_", " ")}
+                      </Text>
+                    </View>
+                  ) : null}
 
-                <Text className={`text-base ${isMine ? "text-white" : "text-text"}`}>
-                  {item.content}
-                </Text>
-
-                {item.attachmentUrl ? (
-                  <Image
-                    source={{ uri: item.attachmentUrl }}
-                    className="mt-2 h-40 w-56 rounded-lg bg-black/20"
-                    resizeMode="cover"
-                  />
-                ) : null}
-              </View>
-
-              <View className="flex-row items-center gap-1 px-1">
-                <Text className="text-[10px] text-muted">
-                  {formatMessageTime(item.createdAt)}
-                </Text>
-                {isMine ? (
-                  <Text className="text-[10px] text-muted">
-                    {item.isRead ? "✓✓ Read" : "✓ Sent"}
+                  <Text
+                    style={[
+                      styles.messageText,
+                      isMine ? styles.messageTextMine : styles.messageTextOther,
+                    ]}>
+                    {item.content}
                   </Text>
-                ) : null}
-              </View>
-            </View>
-          );
-        }}
-      />
+                </View>
 
-      {/* Composer Input */}
-      <View className="flex-row items-end gap-2 border-t border-border p-3">
-        <View className="flex-1">
-          <Input
+                <View style={styles.timeRow}>
+                  <Text style={styles.timeText}>{formatMessageTime(item.createdAt)}</Text>
+                  {isMine ? (
+                    <Text style={styles.readStatusText}>
+                      {item.isRead ? "✓✓ Read" : "✓"}
+                    </Text>
+                  ) : null}
+                </View>
+              </View>
+            );
+          }}
+        />
+
+        {/* Composer Bar */}
+        <View style={styles.composerBar}>
+          <TextInput
             value={inputText}
             onChangeText={setInputText}
             placeholder="Type a message..."
+            placeholderTextColor="#94A3B8"
             multiline
-            maxLength={1000}
+            style={styles.composerInput}
           />
+          <Pressable
+            onPress={handleSend}
+            disabled={!inputText.trim() || sending}
+            style={[
+              styles.sendButton,
+              (!inputText.trim() || sending) && styles.sendButtonDisabled,
+            ]}>
+            <Ionicons name="arrow-up" size={20} color="#FFFFFF" />
+          </Pressable>
         </View>
-        <Button
-          title="Send"
-          loading={sending}
-          disabled={!inputText.trim()}
-          onPress={handleSend}
-        />
-      </View>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: "#151C8A",
+  },
+  keyboardView: {
+    flex: 1,
+    backgroundColor: "#F3F6FB",
+  },
+  topHeader: {
+    backgroundColor: "#151C8A",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingBottom: 14,
+  },
+  iconButton: {
+    width: 36,
+    height: 36,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  partnerInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    flex: 1,
+    marginLeft: 8,
+  },
+  partnerAvatar: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: "#2738F5",
+  },
+  partnerAvatarFallback: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: "#2738F5",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  partnerInitial: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "900",
+  },
+  partnerName: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "800",
+  },
+  partnerEmail: {
+    color: "#CBD5E1",
+    fontSize: 12,
+  },
+  messagesList: {
+    flex: 1,
+  },
+  messagesContent: {
+    padding: 16,
+    gap: 12,
+  },
+  messageRow: {
+    maxWidth: "80%",
+    gap: 3,
+  },
+  messageRowMine: {
+    alignSelf: "flex-end",
+    alignItems: "flex-end",
+  },
+  messageRowOther: {
+    alignSelf: "flex-start",
+    alignItems: "flex-start",
+  },
+  messageBubble: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+  },
+  bubbleMine: {
+    backgroundColor: "#2738F5",
+    borderBottomRightRadius: 4,
+  },
+  bubbleOther: {
+    backgroundColor: "#FFFFFF",
+    borderBottomLeftRadius: 4,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+  },
+  typeBadge: {
+    backgroundColor: "rgba(0, 0, 0, 0.2)",
+    alignSelf: "flex-start",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    marginBottom: 4,
+  },
+  typeBadgeText: {
+    color: "#FFFFFF",
+    fontSize: 10,
+    fontWeight: "800",
+    textTransform: "uppercase",
+  },
+  messageText: {
+    fontSize: 15,
+    lineHeight: 20,
+  },
+  messageTextMine: {
+    color: "#FFFFFF",
+    fontWeight: "500",
+  },
+  messageTextOther: {
+    color: "#0F172A",
+    fontWeight: "500",
+  },
+  timeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 4,
+  },
+  timeText: {
+    fontSize: 10.5,
+    color: "#94A3B8",
+  },
+  readStatusText: {
+    fontSize: 10.5,
+    color: "#2738F5",
+    fontWeight: "700",
+  },
+  composerBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FFFFFF",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderTopWidth: 1,
+    borderTopColor: "#E2E8F0",
+    gap: 8,
+  },
+  composerInput: {
+    flex: 1,
+    backgroundColor: "#F1F5F9",
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    fontSize: 15,
+    color: "#0F172A",
+    maxHeight: 100,
+  },
+  sendButton: {
+    backgroundColor: "#2738F5",
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  sendButtonDisabled: {
+    backgroundColor: "#CBD5E1",
+  },
+});

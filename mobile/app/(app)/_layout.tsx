@@ -1,77 +1,28 @@
 import React from "react";
-import { Tabs } from "expo-router";
-import { Text } from "react-native";
-import { useMessageEvents } from "../../src/features/messages/useMessageEvents";
+import { Stack } from "expo-router";
 
-import type { ColorValue } from "react-native";
-
-function TabIcon({ label, color }: { label: string; color: string | ColorValue }) {
-  return <Text style={{ color, fontSize: 20 }}>{label}</Text>;
-}
-
-
-export default function AppTabsLayout() {
-  const { unreadCount } = useMessageEvents();
-
+export default function AppLayout() {
   return (
-    <Tabs
+    <Stack
       screenOptions={{
         headerShown: false,
-        tabBarStyle: {
-          backgroundColor: "#141a2a",
-          borderTopColor: "#2a3450",
-        },
-        tabBarActiveTintColor: "#3b82f6",
-        tabBarInactiveTintColor: "#8b93a7",
+        contentStyle: { backgroundColor: "#151C8A" },
+        animation: "slide_from_right",
       }}
     >
-      <Tabs.Screen
-        name="dashboard"
-        options={{
-          title: "Home",
-          tabBarIcon: ({ color }) => <TabIcon label="🏠" color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="groups"
-        options={{
-          title: "Groups",
-          tabBarIcon: ({ color }) => <TabIcon label="👥" color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="messages/index"
-        options={{
-          title: "Messages",
-          tabBarIcon: ({ color }) => <TabIcon label="💬" color={color} />,
-          tabBarBadge: unreadCount > 0 ? unreadCount : undefined,
-          tabBarBadgeStyle: { backgroundColor: "#3b82f6", color: "#ffffff", fontSize: 10 },
-        }}
-      />
-      <Tabs.Screen
-        name="wallet"
-        options={{
-          title: "Wallet",
-          tabBarIcon: ({ color }) => <TabIcon label="💳" color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="assistant"
-        options={{
-          title: "Assistant",
-          tabBarIcon: ({ color }) => <TabIcon label="✨" color={color} />,
-        }}
-      />
-
-      {/* Detail & modal routes hidden from tab bar */}
-      <Tabs.Screen name="profile" options={{ href: null }} />
-      <Tabs.Screen name="messages/[id]" options={{ href: null }} />
-      <Tabs.Screen name="messages/new" options={{ href: null }} />
-      <Tabs.Screen name="groups/[id]" options={{ href: null }} />
-      <Tabs.Screen name="groups/[id]/add-member" options={{ href: null }} />
-      <Tabs.Screen name="groups/[id]/add-expense" options={{ href: null }} />
-      <Tabs.Screen name="expense/[id]" options={{ href: null }} />
-      <Tabs.Screen name="expense/edit/[id]" options={{ href: null }} />
-    </Tabs>
+      <Stack.Screen name="dashboard" />
+      <Stack.Screen name="groups/index" />
+      <Stack.Screen name="groups/[id]/index" />
+      <Stack.Screen name="groups/[id]/add-expense" />
+      <Stack.Screen name="groups/[id]/add-member" />
+      <Stack.Screen name="messages/index" />
+      <Stack.Screen name="messages/[id]" />
+      <Stack.Screen name="messages/new" />
+      <Stack.Screen name="wallet" />
+      <Stack.Screen name="assistant" />
+      <Stack.Screen name="profile" />
+      <Stack.Screen name="expense/[id]" />
+      <Stack.Screen name="expense/edit/[id]" />
+    </Stack>
   );
 }

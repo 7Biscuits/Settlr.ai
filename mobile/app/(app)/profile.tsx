@@ -1,26 +1,30 @@
 import React, { useCallback, useState } from "react";
 import {
   Image,
+  Platform,
+  Pressable,
   RefreshControl,
   ScrollView,
+  StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Feather, Ionicons } from "@expo/vector-icons";
+
 import { useAuth } from "../../src/auth/AuthContext";
 import { getMeProfile, updateUserProfile } from "../../src/api/users";
 import { getHealthStatus } from "../../src/api/health";
 import type { HealthStatus } from "../../src/api/types";
-import { Card } from "../../src/components/Card";
-import { Input } from "../../src/components/Input";
-import { Button } from "../../src/components/Button";
-import { LoadingState, ErrorState } from "../../src/components/States";
+import { LoadingState } from "../../src/components/States";
 
 export default function ProfileScreen() {
   const { user, updateUser, signOut } = useAuth();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const topInset = Math.max(insets.top, Platform.OS === "ios" ? 44 : 24);
 
   const [name, setName] = useState(user?.name ?? "");
   const [phone, setPhone] = useState(user?.phone ?? "");
@@ -88,180 +92,440 @@ export default function ProfileScreen() {
 
   if (loading) return <LoadingState label="Loading profile..." />;
 
+  const getInitials = (n: string) => {
+    const parts = n.trim().split(" ");
+    if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+    return (n[0] || "U").toUpperCase();
+  };
+
   return (
-    <ScrollView
-      className="flex-1 bg-bg"
-      style={{ paddingTop: insets.top }}
-      contentContainerStyle={{ padding: 16, gap: 16, paddingBottom: 40 }}
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={async () => {
-            setRefreshing(true);
-            await load();
-            setRefreshing(false);
-          }}
-          tintColor="#3b82f6"
-        />
-      }
-    >
-      <View className="flex-row items-center justify-between">
-        <View className="flex-row items-center gap-2">
-          <Button
-            title="←"
-            variant="ghost"
-            onPress={() => router.back()}
+    <View style={styles.safeArea}>
+      <ScrollView
+        bounces={false}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={async () => {
+              setRefreshing(true);
+              await load();
+              setRefreshing(false);
+            }}
+            tintColor="#00F58D"
           />
-          <Text className="text-2xl font-bold text-text">User Profile</Text>
+        }>
+        {/* Top Blue Header */}
+        <View style={[styles.topSection, { paddingTop: topInset + 4 }]}>
+          <View style={styles.headerRow}>
+            <Pressable hitSlop={14} onPress={() => router.back()} style={styles.iconButton}>
+              <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
+            </Pressable>
+            <Text style={styles.headerTitle}>USER PROFILE</Text>
+            <Pressable
+              onPress={() => {
+                if (editing) {
+                  setName(user?.name ?? "");
+                  setPhone(user?.phone ?? "");
+                  setBio(user?.bio ?? "");
+                  setAvatarUrl(user?.avatarUrl ?? "");
+                  setError(null);
+                }
+                setEditing(!editing);
+              }}
+              style={styles.editPill}>
+              <Text style={styles.editPillText}>{editing ? "Cancel" : "Edit"}</Text>
+            </Pressable>
+          </View>
+
+          {/* Glowing Avatar */}
+          <View style={styles.avatarWrapper}>
+            <View style={styles.avatarCircle}>
+              {avatarUrl ? (
+                <Image source={{ uri: avatarUrl }} style={styles.avatarImg} />
+              ) : (
+                <Text style={styles.avatarInitials}>{getInitials(name)}</Text>
+              )}
+            </View>
+            <View style={styles.starBadge}>
+              <Ionicons name="sparkles" size={13} color="#FFFFFF" />
+            </View>
+          </View>
+
+          <Text style={styles.profileName}>{user?.name}</Text>
+          <Text style={styles.profileEmail}>{user?.email}</Text>
         </View>
-        <Button
-          title={editing ? "Cancel" : "Edit"}
-          variant="secondary"
-          onPress={() => {
-            if (editing) {
-              setName(user?.name ?? "");
-              setPhone(user?.phone ?? "");
-              setBio(user?.bio ?? "");
-              setAvatarUrl(user?.avatarUrl ?? "");
-              setError(null);
-            }
-            setEditing(!editing);
-          }}
-        />
-      </View>
 
-      {error ? <ErrorState message={error} /> : null}
-      {successMsg ? (
-        <Card className="border-success/40 bg-success/10">
-          <Text className="text-sm font-medium text-success">{successMsg}</Text>
-        </Card>
-      ) : null}
+        {/* White Details Container */}
+        <View style={styles.bottomCard}>
+          {error ? <Text style={styles.errorBanner}>{error}</Text> : null}
+          {successMsg ? <Text style={styles.successBanner}>{successMsg}</Text> : null}
 
-      {/* Avatar & Header Card */}
-      <Card className="items-center gap-3 py-6">
-        {avatarUrl ? (
-          <Image
-            source={{ uri: avatarUrl }}
-            className="h-20 w-20 rounded-full border-2 border-primary bg-surface2"
-          />
-        ) : (
-          <View className="h-20 w-20 items-center justify-center rounded-full bg-primary/20 border-2 border-primary">
-            <Text className="text-3xl font-bold text-primary">
-              {name.slice(0, 1).toUpperCase()}
+          <View style={styles.sectionCard}>
+            <Text style={styles.cardHeader}>ACCOUNT INFORMATION</Text>
+
+            {editing ? (
+              <View style={styles.editForm}>
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Full Name</Text>
+                  <TextInput
+                    value={name}
+                    onChangeText={setName}
+                    placeholder="Your Name"
+                    placeholderTextColor="#94A3B8"
+                    style={styles.textInput}
+                  />
+                </View>
+
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Phone Number</Text>
+                  <TextInput
+                    value={phone}
+                    onChangeText={setPhone}
+                    keyboardType="phone-pad"
+                    placeholder="+1 (555) 000-0000"
+                    placeholderTextColor="#94A3B8"
+                    style={styles.textInput}
+                  />
+                </View>
+
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Bio</Text>
+                  <TextInput
+                    value={bio}
+                    onChangeText={setBio}
+                    placeholder="Short bio or status"
+                    placeholderTextColor="#94A3B8"
+                    multiline
+                    style={[styles.textInput, styles.bioInput]}
+                  />
+                </View>
+
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Avatar Image URL</Text>
+                  <TextInput
+                    value={avatarUrl}
+                    onChangeText={setAvatarUrl}
+                    placeholder="https://example.com/avatar.jpg"
+                    placeholderTextColor="#94A3B8"
+                    autoCapitalize="none"
+                    style={styles.textInput}
+                  />
+                </View>
+
+                <Pressable
+                  onPress={handleSave}
+                  disabled={saving}
+                  style={styles.saveButton}>
+                  <Text style={styles.saveButtonText}>
+                    {saving ? "Saving..." : "Save Changes"}
+                  </Text>
+                </Pressable>
+              </View>
+            ) : (
+              <View style={styles.infoList}>
+                <View style={styles.infoRow}>
+                  <Text style={styles.infoLabel}>Email</Text>
+                  <Text style={styles.infoValue}>{user?.email}</Text>
+                </View>
+                <View style={styles.infoRow}>
+                  <Text style={styles.infoLabel}>Phone</Text>
+                  <Text style={styles.infoValue}>{user?.phone || "Not set"}</Text>
+                </View>
+                <View style={styles.infoRow}>
+                  <Text style={styles.infoLabel}>Bio</Text>
+                  <Text style={styles.infoValue}>{user?.bio || "No bio added yet"}</Text>
+                </View>
+                <View style={styles.infoRowLast}>
+                  <Text style={styles.infoLabel}>User ID</Text>
+                  <Text style={styles.infoValueMono}>{user?.id}</Text>
+                </View>
+              </View>
+            )}
+          </View>
+
+          {/* Backend Health Status */}
+          <View style={styles.healthCard}>
+            <View style={styles.healthLeft}>
+              <View
+                style={[
+                  styles.healthDot,
+                  health?.status === "ok" ? styles.healthOnline : styles.healthOffline,
+                ]}
+              />
+              <Text style={styles.healthTitle}>Server & Database</Text>
+            </View>
+            <Text style={styles.healthStatus}>
+              {health?.status === "ok" ? "Connected ⚡" : "Offline"}
             </Text>
           </View>
-        )}
-        <View className="items-center gap-1">
-          <Text className="text-xl font-bold text-text">{user?.name}</Text>
-          <Text className="text-sm text-muted">{user?.email}</Text>
-          {user?.phone ? (
-            <Text className="text-xs text-muted">📞 {user.phone}</Text>
-          ) : null}
+
+          {/* Sign Out Action */}
+          <Pressable
+            onPress={signOut}
+            style={styles.signOutButton}>
+            <Text style={styles.signOutText}>Log out of Settlr</Text>
+          </Pressable>
         </View>
-      </Card>
-
-      {/* Profile Details / Edit Form */}
-      <Card className="gap-4">
-        <Text className="text-base font-semibold text-text">Account Information</Text>
-
-        {editing ? (
-          <View className="gap-3">
-            <Input
-              label="Full Name"
-              value={name}
-              onChangeText={setName}
-              placeholder="Your Name"
-            />
-            <Input
-              label="Phone Number"
-              value={phone}
-              onChangeText={setPhone}
-              keyboardType="phone-pad"
-              placeholder="+1 555-0199"
-            />
-            <Input
-              label="Bio"
-              value={bio}
-              onChangeText={setBio}
-              placeholder="Short bio or note"
-              multiline
-              numberOfLines={2}
-            />
-            <Input
-              label="Avatar Image URL"
-              value={avatarUrl}
-              onChangeText={setAvatarUrl}
-              placeholder="https://example.com/avatar.jpg"
-              autoCapitalize="none"
-            />
-            <Button
-              title="Save Changes"
-              loading={saving}
-              onPress={handleSave}
-            />
-          </View>
-        ) : (
-          <View className="gap-3">
-            <View className="border-b border-border pb-2">
-              <Text className="text-xs text-muted">Email</Text>
-              <Text className="text-base text-text">{user?.email}</Text>
-            </View>
-            <View className="border-b border-border pb-2">
-              <Text className="text-xs text-muted">Phone</Text>
-              <Text className="text-base text-text">
-                {user?.phone ? user.phone : "Not set"}
-              </Text>
-            </View>
-            <View className="border-b border-border pb-2">
-              <Text className="text-xs text-muted">Bio</Text>
-              <Text className="text-base text-text">
-                {user?.bio ? user.bio : "No bio added yet"}
-              </Text>
-            </View>
-            <View className="pb-1">
-              <Text className="text-xs text-muted">User ID</Text>
-              <Text className="text-xs font-mono text-muted">{user?.id}</Text>
-            </View>
-          </View>
-        )}
-      </Card>
-
-      {/* Backend Health & Connectivity */}
-      <Card className="gap-2">
-        <Text className="text-base font-semibold text-text">System & Connection</Text>
-        <View className="flex-row items-center justify-between border-b border-border py-2">
-          <Text className="text-sm text-muted">Server Status</Text>
-          <View className="flex-row items-center gap-1.5">
-            <View
-              className={`h-2.5 w-2.5 rounded-full ${
-                health?.status === "ok" ? "bg-success" : "bg-warning"
-              }`}
-            />
-            <Text className="text-sm font-medium text-text capitalize">
-              {health?.status ?? "Checking..."}
-            </Text>
-          </View>
-        </View>
-        <View className="flex-row items-center justify-between py-2">
-          <Text className="text-sm text-muted">Database</Text>
-          <Text className="text-sm font-medium text-text capitalize">
-            {health?.database ?? "Connected"}
-          </Text>
-        </View>
-      </Card>
-
-      {/* Server-Side Sign Out */}
-      <Card className="gap-2">
-        <Text className="text-base font-semibold text-text">Session</Text>
-        <Text className="text-xs text-muted">
-          Logging out will invalidate your authentication session on both this device and the backend server.
-        </Text>
-        <Button
-          title="Sign out of PayPilot"
-          variant="danger"
-          onPress={signOut}
-        />
-      </Card>
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: "#151C8A",
+  },
+  scrollContent: {
+    flexGrow: 1,
+    backgroundColor: "#F3F6FB",
+  },
+  topSection: {
+    backgroundColor: "#151C8A",
+    alignItems: "center",
+    paddingBottom: 24,
+    paddingHorizontal: 20,
+  },
+  headerRow: {
+    width: "100%",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 16,
+  },
+  iconButton: {
+    width: 36,
+    height: 36,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  headerTitle: {
+    color: "#FFFFFF",
+    fontSize: 18,
+    fontWeight: "900",
+    letterSpacing: 0.5,
+  },
+  editPill: {
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 12,
+  },
+  editPillText: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  avatarWrapper: {
+    position: "relative",
+    marginVertical: 10,
+  },
+  avatarCircle: {
+    width: 84,
+    height: 84,
+    borderRadius: 42,
+    backgroundColor: "#2738F5",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 3,
+    borderColor: "#00F58D",
+    overflow: "hidden",
+  },
+  avatarImg: {
+    width: "100%",
+    height: "100%",
+  },
+  avatarInitials: {
+    color: "#FFFFFF",
+    fontSize: 32,
+    fontWeight: "900",
+  },
+  starBadge: {
+    position: "absolute",
+    bottom: 0,
+    right: 0,
+    backgroundColor: "#00F58D",
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: "#151C8A",
+  },
+  profileName: {
+    color: "#FFFFFF",
+    fontSize: 22,
+    fontWeight: "900",
+    letterSpacing: 0.5,
+    marginTop: 6,
+    textTransform: "uppercase",
+  },
+  profileEmail: {
+    color: "#CBD5E1",
+    fontSize: 14,
+    fontWeight: "500",
+    marginTop: 2,
+  },
+  bottomCard: {
+    backgroundColor: "#FFFFFF",
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    paddingHorizontal: 20,
+    paddingTop: 24,
+    paddingBottom: 32,
+    flex: 1,
+    gap: 16,
+  },
+  errorBanner: {
+    backgroundColor: "#FEE2E2",
+    color: "#DC2626",
+    fontSize: 13,
+    fontWeight: "600",
+    padding: 10,
+    borderRadius: 10,
+    textAlign: "center",
+  },
+  successBanner: {
+    backgroundColor: "#DCFCE7",
+    color: "#059669",
+    fontSize: 13,
+    fontWeight: "600",
+    padding: 10,
+    borderRadius: 10,
+    textAlign: "center",
+  },
+  sectionCard: {
+    backgroundColor: "#F8FAFC",
+    borderWidth: 1.5,
+    borderColor: "#E2E8F0",
+    borderRadius: 20,
+    padding: 16,
+  },
+  cardHeader: {
+    fontSize: 15,
+    fontWeight: "900",
+    color: "#0F172A",
+    letterSpacing: 0.5,
+    marginBottom: 14,
+  },
+  infoList: {
+    gap: 12,
+  },
+  infoRow: {
+    borderBottomWidth: 1,
+    borderBottomColor: "#E2E8F0",
+    paddingBottom: 8,
+  },
+  infoRowLast: {
+    paddingBottom: 4,
+  },
+  infoLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#64748B",
+  },
+  infoValue: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#0F172A",
+    marginTop: 2,
+  },
+  infoValueMono: {
+    fontSize: 12,
+    fontFamily: Platform.OS === "ios" ? "Courier" : "monospace",
+    color: "#64748B",
+    marginTop: 2,
+  },
+  editForm: {
+    gap: 12,
+  },
+  inputGroup: {
+    gap: 4,
+  },
+  inputLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#64748B",
+  },
+  textInput: {
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1.5,
+    borderColor: "#CBD5E1",
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    height: 48,
+    fontSize: 15,
+    color: "#0F172A",
+    fontWeight: "600",
+  },
+  bioInput: {
+    height: 72,
+    paddingTop: 10,
+  },
+  saveButton: {
+    backgroundColor: "#2738F5",
+    borderRadius: 12,
+    height: 48,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 6,
+  },
+  saveButtonText: {
+    color: "#FFFFFF",
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  healthCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#F0FDF4",
+    borderWidth: 1,
+    borderColor: "#BBF7D0",
+    borderRadius: 14,
+    padding: 12,
+  },
+  healthLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  healthDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  healthOnline: {
+    backgroundColor: "#10B981",
+  },
+  healthOffline: {
+    backgroundColor: "#EF4444",
+  },
+  healthTitle: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#0F172A",
+  },
+  healthStatus: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#059669",
+  },
+  signOutButton: {
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1.5,
+    borderColor: "#161A36",
+    borderRadius: 14,
+    height: 50,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 8,
+  },
+  signOutText: {
+    color: "#161A36",
+    fontSize: 15,
+    fontWeight: "800",
+  },
+});

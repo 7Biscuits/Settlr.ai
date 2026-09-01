@@ -1,83 +1,107 @@
 import React, { useState } from "react";
-import { KeyboardAvoidingView, Platform, ScrollView, Text, View } from "react-native";
-import { Link } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Dimensions, StyleSheet, View } from "react-native";
+import Animated, {
+  FadeIn,
+  FadeOut,
+  useAnimatedStyle,
+  useSharedValue,
+} from "react-native-reanimated";
+import { StatusBar } from "expo-status-bar";
+import { useRouter } from "expo-router";
+
 import { useAuth } from "../../src/auth/AuthContext";
-import { Input } from "../../src/components/Input";
-import { Button } from "../../src/components/Button";
-import { ApiError } from "../../src/api/client";
+import { OnboardingScreen } from "../../src/components/settlr/onboarding/OnboardingScreen";
+import { SignUpFlow, SignUpData } from "../../src/components/settlr/signup/SignUpFlow";
+import { SignUpSuccessScreen } from "../../src/components/settlr/signup/SignUpSuccessScreen";
+
+const { width: SCREEN_WIDTH } = Dimensions.get("window");
+
+type AuthFlowMode = "onboarding" | "signup" | "login" | "success";
 
 export default function LoginScreen() {
-  const { signIn } = useAuth();
-  const insets = useSafeAreaInsets();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const { signIn, signUp } = useAuth();
+  const router = useRouter();
+  const [flowMode, setFlowMode] = useState<AuthFlowMode>("onboarding");
 
-  async function submit() {
-    setError(null);
-    if (!email || !password) {
-      setError("Enter your email and password.");
-      return;
-    }
-    setLoading(true);
-    try {
-      await signIn(email.trim(), password);
-    } catch (err) {
-      setError(
-        err instanceof ApiError ? err.message : "Unable to log in. Try again.",
-      );
-    } finally {
-      setLoading(false);
-    }
-  }
+  const handleRegister = async (data: SignUpData) => {
+    const fullName = `${data.firstName} ${data.lastName}`.trim();
+    await signUp(data.email, fullName, data.password || "password123");
+    setFlowMode("success");
+  };
+
+  const handleLoginSubmit = async (email: string, password?: string) => {
+    await signIn(email, password || "password123");
+    router.replace("/(app)/dashboard");
+  };
 
   return (
-    <KeyboardAvoidingView
-      className="flex-1 bg-bg"
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-    >
-      <ScrollView
-        contentContainerStyle={{ flexGrow: 1, justifyContent: "center" }}
-        style={{ paddingTop: insets.top }}
-      >
-        <View className="gap-5 p-6">
-          <View className="gap-1">
-            <Text className="text-3xl font-bold text-text">PayPilot</Text>
-            <Text className="text-base text-muted">
-              Log in to manage shared expenses and settle up.
-            </Text>
-          </View>
+    <View style={styles.container}>
+      <StatusBar style={flowMode === "onboarding" ? "dark" : "light"} />
 
-          <Input
-            label="Email"
-            value={email}
-            onChangeText={setEmail}
-            autoCapitalize="none"
-            keyboardType="email-address"
-            placeholder="you@example.com"
+      {/* 1. Onboarding 4-Slide Carousel */}
+      {flowMode === "onboarding" && (
+        <Animated.View
+          entering={FadeIn.duration(200)}
+          exiting={FadeOut.duration(150)}
+          style={styles.fullScreen}>
+          <OnboardingScreen
+            onSignUp={() => setFlowMode("signup")}
+            onLogin={() => setFlowMode("login")}
           />
-          <Input
-            label="Password"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-            placeholder="Your password"
+        </Animated.View>
+      )}
+
+      {/* 2. Sign Up Multi-Step Flow */}
+      {flowMode === "signup" && (
+        <Animated.View
+          entering={FadeIn.duration(200)}
+          exiting={FadeOut.duration(150)}
+          style={styles.fullScreen}>
+          <SignUpFlow
+            initialMode="signup"
+            onComplete={handleRegister}
+            onLoginSubmit={handleLoginSubmit}
+            onClose={() => setFlowMode("onboarding")}
           />
+        </Animated.View>
+      )}
 
-          {error ? <Text className="text-sm text-danger">{error}</Text> : null}
+      {/* 3. Direct Login Flow */}
+      {flowMode === "login" && (
+        <Animated.View
+          entering={FadeIn.duration(200)}
+          exiting={FadeOut.duration(150)}
+          style={styles.fullScreen}>
+          <SignUpFlow
+            initialMode="login"
+            onComplete={handleRegister}
+            onLoginSubmit={handleLoginSubmit}
+            onClose={() => setFlowMode("onboarding")}
+          />
+        </Animated.View>
+      )}
 
-          <Button title="Log in" loading={loading} onPress={submit} />
-
-          <View className="flex-row justify-center gap-1">
-            <Text className="text-muted">No account?</Text>
-            <Link href="/(auth)/signup" className="font-semibold text-primary">
-              Sign up
-            </Link>
-          </View>
-        </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+      {/* 4. Celebration Success Screen */}
+      {flowMode === "success" && (
+        <Animated.View
+          entering={FadeIn.duration(250)}
+          exiting={FadeOut.duration(150)}
+          style={styles.fullScreen}>
+          <SignUpSuccessScreen
+            onNext={() => router.replace("/(app)/dashboard")}
+          />
+        </Animated.View>
+      )}
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: "#FFFFFF",
+  },
+  fullScreen: {
+    flex: 1,
+  },
+});

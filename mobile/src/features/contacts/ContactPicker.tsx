@@ -4,15 +4,14 @@ import { Button } from "../../components/Button";
 import { Input } from "../../components/Input";
 import { EmptyState } from "../../components/States";
 import {
-  ensureContactsPermission,
+  createLocalContact,
   searchContacts,
   type DeviceContact,
 } from "../../lib/contacts";
 
 /**
- * On-device contact picker. Requests permission on open, lets the user search,
- * and returns the chosen contact. The full address book is never sent anywhere;
- * only the selected contact's details are used locally.
+ * Zero-permission in-app contact picker. Searches existing PayPilot users or allows
+ * creating a new contact instantly with name and optional phone/email.
  */
 export function ContactPicker({
   visible,
@@ -25,21 +24,29 @@ export function ContactPicker({
 }) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<DeviceContact[]>([]);
-  const [permission, setPermission] = useState<"unknown" | "granted" | "denied">(
-    "unknown",
-  );
   const [loading, setLoading] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newPhone, setNewPhone] = useState("");
+  const [isCreating, setIsCreating] = useState(false);
 
   const runSearch = useCallback(async (q: string) => {
     setLoading(true);
     try {
-      const granted = await ensureContactsPermission();
-      setPermission(granted ? "granted" : "denied");
-      if (granted) setResults(await searchContacts(q));
+      setResults(await searchContacts(q));
     } finally {
       setLoading(false);
     }
   }, []);
+
+  function handleCreate() {
+    if (!newName.trim()) return;
+    const contact = createLocalContact(newName.trim(), newPhone.trim() || undefined);
+    onSelect(contact);
+    setIsCreating(false);
+    setNewName("");
+    setNewPhone("");
+    onClose();
+  }
 
   return (
     <Modal
@@ -52,52 +59,102 @@ export function ContactPicker({
       <View className="flex-1 justify-end bg-black/60">
         <View className="h-3/4 rounded-t-3xl border-t border-border bg-surface p-5">
           <View className="mb-3 flex-row items-center justify-between">
-            <Text className="text-lg font-bold text-text">Contacts</Text>
+            <Text className="text-lg font-bold text-text">
+              {isCreating ? "New Contact" : "Select or Add Contact"}
+            </Text>
             <Button title="Close" variant="ghost" onPress={onClose} />
           </View>
 
-          <View className="mb-3 flex-row gap-2">
-            <View className="flex-1">
+          {isCreating ? (
+            <View className="gap-3">
               <Input
-                value={query}
-                onChangeText={setQuery}
-                placeholder="Search contacts"
-                autoCapitalize="none"
+                label="Contact Name *"
+                value={newName}
+                onChangeText={setNewName}
+                placeholder="e.g. Sarah"
               />
+              <Input
+                label="Phone (Optional)"
+                value={newPhone}
+                onChangeText={setNewPhone}
+                keyboardType="phone-pad"
+                placeholder="e.g. +1 555 1234"
+              />
+              <View className="flex-row gap-2 mt-2">
+                <View className="flex-1">
+                  <Button
+                    title="Cancel"
+                    variant="secondary"
+                    onPress={() => setIsCreating(false)}
+                  />
+                </View>
+                <View className="flex-1">
+                  <Button
+                    title="Add Contact"
+                    onPress={handleCreate}
+                  />
+                </View>
+              </View>
             </View>
-            <Button
-              title="Search"
-              variant="secondary"
-              loading={loading}
-              onPress={() => runSearch(query)}
-            />
-          </View>
-
-          {permission === "denied" ? (
-            <EmptyState
-              title="Contacts permission denied"
-              subtitle="Enable contacts access in Settings to pick a friend."
-            />
-          ) : results.length === 0 ? (
-            <EmptyState
-              title="No contacts found"
-              subtitle="Try a different search."
-            />
           ) : (
-            <ScrollView>
-              {results.map((c: any) => (
-                <Pressable
-                  key={c.id}
-                  onPress={() => onSelect(c)}
-                  className="border-b border-border py-3 active:opacity-70"
-                >
-                  <Text className="text-base text-text">{c.name}</Text>
-                  <Text className="text-sm text-muted">
-                    {c.phoneNumbers[0] ?? c.emails[0] ?? "No contact info"}
-                  </Text>
-                </Pressable>
-              ))}
-            </ScrollView>
+            <>
+              <View className="mb-3 flex-row gap-2">
+                <View className="flex-1">
+                  <Input
+                    value={query}
+                    onChangeText={setQuery}
+                    placeholder="Search name, email, or phone"
+                    autoCapitalize="none"
+                  />
+                </View>
+                <Button
+                  title="Search"
+                  variant="secondary"
+                  loading={loading}
+                  onPress={() => runSearch(query)}
+                />
+              </View>
+
+              <View className="mb-3">
+                <Button
+                  title="+ Create New Contact"
+                  variant="secondary"
+                  onPress={() => {
+                    setNewName(query);
+                    setIsCreating(true);
+                  }}
+                />
+              </View>
+
+              {results.length === 0 ? (
+                <EmptyState
+                  title="No matching contacts found"
+                  subtitle="Tap '+ Create New Contact' above to add someone."
+                />
+              ) : (
+                <ScrollView>
+                  {results.map((c: any) => (
+                    <Pressable
+                      key={c.id}
+                      onPress={() => onSelect(c)}
+                      className="flex-row items-center justify-between border-b border-border py-3 active:opacity-70"
+                    >
+                      <View className="gap-0.5">
+                        <Text className="text-base font-semibold text-text">{c.name}</Text>
+                        <Text className="text-sm text-muted">
+                          {c.phoneNumbers[0] ?? c.emails[0] ?? (c.isRegistered ? "PayPilot User" : "Custom Contact")}
+                        </Text>
+                      </View>
+                      {c.isRegistered ? (
+                        <View className="rounded bg-primary/20 px-2 py-0.5">
+                          <Text className="text-xs font-semibold text-primary">Registered</Text>
+                        </View>
+                      ) : null}
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              )}
+            </>
           )}
         </View>
       </View>

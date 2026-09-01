@@ -1,0 +1,19 @@
+{
+  "name": "paypilot",
+  "version": "0.1.0",
+  "private": true,
+  "description": "PayPilot — AI-powered shared-expense and debt-settlement application",
+  "scripts": {
+    "dev:backend": "pnpm --filter backend dev",
+    "build:backend": "pnpm --filter backend build",
+    "test:backend": "pnpm --filter backend test",
+    "dev:frontend": "pnpm --filter frontend dev",
+    "build:frontend": "pnpm --filter frontend build",
+    "db:up": "docker compose up -d db",
+    "db:down": "docker compose down"
+  },
+  "packageManager": "pnpm@9.12.0",
+  "engines": {
+    "node": ">=20"
+  }
+}

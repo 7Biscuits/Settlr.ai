@@ -1,0 +1,51 @@
+{
+  "expo": {
+    "name": "PayPilot",
+    "slug": "paypilot",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "paypilot",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#0b0f19"
+    },
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.paypilot.app",
+      "infoPlist": {
+        "NSContactsUsageDescription": "PayPilot uses your contacts so you can quickly add friends to groups and send invitations.",
+        "NSMicrophoneUsageDescription": "PayPilot uses the microphone for voice commands to the AI assistant."
+      }
+    },
+    "android": {
+      "package": "com.paypilot.app",
+      "permissions": [
+        "READ_CONTACTS",
+        "RECORD_AUDIO",
+        "SEND_SMS"
+      ]
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      [
+        "expo-contacts",
+        {
+          "contactsPermission": "PayPilot uses your contacts to add friends and send invitations."
+        }
+      ],
+      [
+        "expo-av",
+        {
+          "microphonePermission": "PayPilot uses the microphone for voice commands."
+        }
+      ]
+    ],
+    "extra": {
+      "apiBaseUrl": "http://localhost:3000"
+    }
+  }
+}

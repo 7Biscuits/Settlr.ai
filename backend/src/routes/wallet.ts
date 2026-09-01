@@ -13,6 +13,17 @@ import {
 } from "../services/walletService.js";
 import { settleDebt } from "../services/settlementService.js";
 
+import { z } from "zod";
+
+const paginationSchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+  offset: z.coerce.number().int().nonnegative().default(0),
+});
+
+import { createRateLimiter } from "../middleware/rateLimit.js";
+
+const walletRateLimit = createRateLimiter({ max: 30, windowMs: 60_000 });
+
 export async function walletRoutes(app: FastifyInstance): Promise<void> {
   app.addHook("preHandler", authenticate);
 
@@ -24,18 +35,19 @@ export async function walletRoutes(app: FastifyInstance): Promise<void> {
 
   app.get("/wallet/transactions", async (request, reply) => {
     const { id: userId } = request.user as { id: string };
-    const transactions = await listTransactions(userId);
+    const pagination = paginationSchema.parse(request.query ?? {});
+    const transactions = await listTransactions(userId, pagination);
     return reply.send({ transactions });
   });
 
-  app.post("/wallet/topup", async (request, reply) => {
+  app.post("/wallet/topup", { preHandler: walletRateLimit }, async (request, reply) => {
     const { id: userId } = request.user as { id: string };
     const { amount, idempotencyKey } = topUpSchema.parse(request.body);
     const result = await topUp(userId, amount, idempotencyKey);
     return reply.send(result);
   });
 
-  app.post("/wallet/transfer", async (request, reply) => {
+  app.post("/wallet/transfer", { preHandler: walletRateLimit }, async (request, reply) => {
     const { id: userId } = request.user as { id: string };
     const { toUserId, amount, idempotencyKey } = transferSchema.parse(
       request.body,
@@ -49,7 +61,7 @@ export async function walletRoutes(app: FastifyInstance): Promise<void> {
     return reply.send({ transaction });
   });
 
-  app.post("/wallet/settle", async (request, reply) => {
+  app.post("/wallet/settle", { preHandler: walletRateLimit }, async (request, reply) => {
     const { id: userId } = request.user as { id: string };
     const { groupId, toUserId, amount, idempotencyKey } = settleSchema.parse(
       request.body,
@@ -64,3 +76,4 @@ export async function walletRoutes(app: FastifyInstance): Promise<void> {
     return reply.send(result);
   });
 }
+

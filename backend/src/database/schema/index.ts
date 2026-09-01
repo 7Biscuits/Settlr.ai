@@ -9,3 +9,7 @@ export * from "./transactions.js";
 export * from "./settlements.js";
 export * from "./groupInvitations.js";
 export * from "./agentActionProposals.js";
+export * from "./revokedTokens.js";
+export * from "./conversations.js";
+export * from "./directMessages.js";
+

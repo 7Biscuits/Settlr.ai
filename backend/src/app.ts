@@ -13,12 +13,15 @@ import { walletRoutes } from "./routes/wallet.js";
 import { agentRoutes } from "./routes/agent.js";
 import { voiceRoutes } from "./routes/voice.js";
 import { dashboardRoutes } from "./routes/dashboard.js";
+import { userRoutes } from "./routes/users.js";
+import { messageRoutes } from "./routes/messages.js";
 
 export async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({
     logger: env.NODE_ENV !== "test",
-    bodyLimit: 1_000_000,
+    bodyLimit: 15_000_000,
   });
+
 
   const corsOrigins = env.CORS_ORIGIN.split(",")
     .map((origin) => origin.trim())
@@ -61,6 +64,8 @@ export async function buildApp(): Promise<FastifyInstance> {
 
   await app.register(healthRoutes);
   await app.register(authRoutes);
+  await app.register(userRoutes);
+  await app.register(messageRoutes);
   await app.register(dashboardRoutes);
   await app.register(groupRoutes);
   await app.register(expenseRoutes);
@@ -69,5 +74,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   await app.register(agentRoutes);
   await app.register(voiceRoutes);
 
+
   return app;
 }
+

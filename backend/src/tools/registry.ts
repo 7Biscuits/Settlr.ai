@@ -1,6 +1,17 @@
 import type { ToolDefinition, ToolSchemaForLLM } from "./types.js";
-import { getExpensesTool, createExpenseTool } from "./expense/index.js";
-import { getGroupsTool, addFriendTool } from "./group/index.js";
+import {
+  getExpensesTool,
+  createExpenseTool,
+  updateExpenseTool,
+  deleteExpenseTool,
+} from "./expense/index.js";
+import {
+  getGroupsTool,
+  createGroupTool,
+  updateGroupTool,
+  deleteGroupTool,
+  addFriendTool,
+} from "./group/index.js";
 import {
   getBalanceTool,
   getGroupBalanceTool,
@@ -11,12 +22,27 @@ import {
   transferWalletFundsTool,
   settleDebtTool,
 } from "./wallet/index.js";
+import {
+  getMyProfileTool,
+  lookupUserByContactTool,
+  updateProfileTool,
+} from "./user/index.js";
+import {
+  listConversationsTool,
+  getDirectMessagesTool,
+  sendDirectMessageTool,
+} from "./message/index.js";
 import { zodToJsonSchema } from "../utils/zodToJsonSchema.js";
 
 const allTools: ToolDefinition[] = [
   getExpensesTool,
   createExpenseTool,
+  updateExpenseTool,
+  deleteExpenseTool,
   getGroupsTool,
+  createGroupTool,
+  updateGroupTool,
+  deleteGroupTool,
   addFriendTool,
   getBalanceTool,
   getGroupBalanceTool,
@@ -24,7 +50,17 @@ const allTools: ToolDefinition[] = [
   checkWalletBalanceTool,
   transferWalletFundsTool,
   settleDebtTool,
+  getMyProfileTool,
+  lookupUserByContactTool,
+  updateProfileTool,
+  listConversationsTool,
+  getDirectMessagesTool,
+  sendDirectMessageTool,
 ];
+
+
+
+
 
 const registry = new Map<string, ToolDefinition>(
   allTools.map((t) => [t.name, t]),

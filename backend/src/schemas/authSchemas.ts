@@ -4,7 +4,9 @@ export const registerSchema = z.object({
   email: z.string().email(),
   name: z.string().min(1).max(120),
   password: z.string().min(8).max(128),
+  phone: z.string().trim().min(3).max(32).optional(),
 });
+
 
 export const loginSchema = z.object({
   email: z.string().email(),

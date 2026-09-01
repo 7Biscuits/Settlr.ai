@@ -3,9 +3,10 @@ import type { ToolDefinition } from "../types.js";
 import {
   getOverallBalancesForUser,
   getGroupBalancesForUser,
-  getNetOwedToUser,
+  getDebtToUserInGroup,
   findGroupMemberByName,
 } from "../../services/balanceService.js";
+import { assertMember } from "../../services/groupService.js";
 
 export const getBalanceTool: ToolDefinition = {
   name: "get_balance",
@@ -42,14 +43,16 @@ export const getDebtToUserTool: ToolDefinition = {
   sensitive: false,
   async execute(input, ctx) {
     const { groupId, name } = input as { groupId: string; name: string };
+    await assertMember(groupId, ctx.userId);
     const member = await findGroupMemberByName(groupId, name);
     if (!member) {
       return { success: false, error: `No group member named "${name}"` };
     }
-    const owed = await getNetOwedToUser(ctx.userId, member.id);
+    const owed = await getDebtToUserInGroup(groupId, ctx.userId, member.id);
     return {
       success: true,
       data: { userId: member.id, name: member.name, amountOwed: owed },
     };
   },
 };
+

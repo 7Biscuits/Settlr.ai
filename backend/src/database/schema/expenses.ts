@@ -23,10 +23,14 @@ export const expenses = pgTable("expenses", {
   description: varchar("description", { length: 255 }).notNull(),
   amount: bigint("amount", { mode: "number" }).notNull(),
   splitType: varchar("split_type", { length: 20 }).notNull().default("equal"),
+  category: varchar("category", { length: 50 }).notNull().default("general"),
+  receiptUrl: varchar("receipt_url", { length: 1024 }),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
 });
+
+
 
 export type Expense = typeof expenses.$inferSelect;
 export type NewExpense = typeof expenses.$inferInsert;

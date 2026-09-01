@@ -5,11 +5,20 @@ import * as schema from "./schema/index.js";
 
 const { Pool } = pg;
 
+const isRemoteDb =
+  env.DATABASE_URL.includes("supabase.com") ||
+  env.DATABASE_URL.includes("sslmode=require") ||
+  env.DATABASE_URL.includes("amazonaws.com");
+
 export const pool = new Pool({
   connectionString: env.DATABASE_URL,
+  ssl: isRemoteDb ? { rejectUnauthorized: false } : undefined,
+  connectionTimeoutMillis: 10000,
 });
 
+
 export const db = drizzle(pool, { schema });
+
 
 export type Database = typeof db;
 

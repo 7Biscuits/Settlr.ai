@@ -24,10 +24,13 @@ export const agentActionProposals = pgTable("agent_action_proposals", {
   status: varchar("status", { length: 20 }).notNull().default("pending"),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   result: jsonb("result").$type<unknown>(),
+  executingAt: timestamp("executing_at", { withTimezone: true }),
+  executionToken: varchar("execution_token", { length: 64 }),
   confirmedAt: timestamp("confirmed_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
 });
+
 
 export type AgentActionProposal = typeof agentActionProposals.$inferSelect;

@@ -100,7 +100,10 @@ export async function transferFunds(
 
 export async function listTransactions(
   userId: string,
+  pagination?: { limit?: number; offset?: number },
 ): Promise<Transaction[]> {
+  const limit = pagination?.limit ?? 50;
+  const offset = pagination?.offset ?? 0;
   return db
     .select()
     .from(transactions)
@@ -110,8 +113,11 @@ export async function listTransactions(
         eq(transactions.toUserId, userId),
       ),
     )
-    .orderBy(desc(transactions.createdAt));
+    .orderBy(desc(transactions.createdAt))
+    .limit(limit)
+    .offset(offset);
 }
+
 
 // --- transaction-scoped helpers ---
 

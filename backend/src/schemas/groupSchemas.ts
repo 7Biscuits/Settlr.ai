@@ -1,7 +1,15 @@
 import { z } from "zod";
 
 export const createGroupSchema = z.object({
-  name: z.string().min(1).max(120),
+  name: z.string().trim().min(1).max(120),
+});
+
+export const updateGroupSchema = z.object({
+  name: z.string().trim().min(1).max(120),
+});
+
+export const groupIdParamSchema = z.object({
+  id: z.string().uuid(),
 });
 
 export const addMemberSchema = z.object({
@@ -17,4 +25,6 @@ export const invitationIdSchema = z.object({
 });
 
 export type CreateGroupInput = z.infer<typeof createGroupSchema>;
+export type UpdateGroupInput = z.infer<typeof updateGroupSchema>;
 export type AddMemberInput = z.infer<typeof addMemberSchema>;
+

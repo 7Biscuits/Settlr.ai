@@ -11,9 +11,14 @@ import {
 } from "../services/agentProposalService.js";
 import { createRateLimiter } from "../middleware/rateLimit.js";
 
+const userMessageHistorySchema = z.object({
+  role: z.literal("user"),
+  content: z.string().trim().min(1).max(4_000),
+});
+
 const chatSchema = z.object({
   message: z.string().trim().min(1).max(4_000),
-  messages: z.array(z.any()).max(100).optional(),
+  messages: z.array(userMessageHistorySchema).max(30).optional(),
 });
 
 const confirmSchema = z.object({
@@ -81,7 +86,13 @@ export async function agentRoutes(app: FastifyInstance): Promise<void> {
       claimed.proposal.toolCallId,
       claimed.proposal.messages as ChatMessage[],
     );
-    await completeActionProposal(proposalId, userId, result);
+    await completeActionProposal(
+      proposalId,
+      userId,
+      claimed.executionToken,
+      result,
+    );
     return reply.send(result);
   });
 }
+

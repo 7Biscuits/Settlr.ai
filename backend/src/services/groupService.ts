@@ -7,12 +7,16 @@ import {
   type GroupInvitation,
 } from "../database/schema/groupInvitations.js";
 import { users } from "../database/schema/users.js";
+import { balances } from "../database/schema/balances.js";
 import {
   ForbiddenError,
   NotFoundError,
   ConflictError,
+  ValidationError,
 } from "../utils/errors.js";
-import { and, desc, eq, gt } from "drizzle-orm";
+
+import { and, desc, eq, gt, ne } from "drizzle-orm";
+
 
 const INVITATION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -76,17 +80,75 @@ export async function assertMember(
   }
 }
 
-async function assertOwner(groupId: string, userId: string): Promise<void> {
+export async function isGroupOwner(
+  groupId: string,
+  userId: string,
+): Promise<boolean> {
   const [membership] = await db
     .select({ role: groupMembers.role })
     .from(groupMembers)
     .where(
       and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, userId)),
     );
-  if (membership?.role !== "owner") {
-    throw new ForbiddenError("Only the group owner can manage members");
+  return membership?.role === "owner";
+}
+
+export async function assertOwner(groupId: string, userId: string): Promise<void> {
+  if (!(await isGroupOwner(groupId, userId))) {
+    throw new ForbiddenError("Only the group owner can perform this action");
   }
 }
+
+
+export async function updateGroup(
+  groupId: string,
+  userId: string,
+  input: { name: string },
+): Promise<Group> {
+  await assertOwner(groupId, userId);
+  const [updated] = await db
+    .update(groups)
+    .set({
+      name: input.name.trim(),
+      updatedAt: new Date(),
+    })
+    .where(eq(groups.id, groupId))
+    .returning();
+
+  if (!updated) {
+    throw new NotFoundError("Group not found");
+  }
+  return updated;
+}
+
+export async function deleteGroup(
+  groupId: string,
+  userId: string,
+): Promise<void> {
+  await assertOwner(groupId, userId);
+
+  // Assert no outstanding non-zero debts exist in this group before deletion
+  const activeDebts = await db
+    .select()
+    .from(balances)
+    .where(and(eq(balances.groupId, groupId), ne(balances.amount, 0)));
+
+  if (activeDebts.length > 0) {
+    throw new ConflictError(
+      "Cannot delete group with outstanding unsettled debts. Please settle all balances first.",
+    );
+  }
+
+  const [deleted] = await db
+    .delete(groups)
+    .where(eq(groups.id, groupId))
+    .returning();
+
+  if (!deleted) {
+    throw new NotFoundError("Group not found");
+  }
+}
+
 
 export async function listGroupsForUser(userId: string): Promise<Group[]> {
   const rows = await db
@@ -210,6 +272,38 @@ export async function inviteOrAddMemberByEmail(
     invitation: toInvitationDetails(invitation, group.name),
   };
 }
+
+export async function inviteOrAddMemberByContact(
+  groupId: string,
+  requesterId: string,
+  contact: { email?: string; phone?: string },
+): Promise<InviteOrAddResult> {
+  await assertOwner(groupId, requesterId);
+
+  if (contact.phone) {
+    const normPhone = contact.phone.trim();
+    const [user] = await db.select().from(users).where(eq(users.phone, normPhone));
+    if (user) {
+      if (await isMember(groupId, user.id)) {
+        throw new ConflictError("User is already a member");
+      }
+      await db.insert(groupMembers).values({ groupId, userId: user.id });
+      return {
+        kind: "member_added",
+        member: { id: user.id, name: user.name, email: user.email },
+      };
+    }
+  }
+
+  if (contact.email) {
+    return inviteOrAddMemberByEmail(groupId, requesterId, contact.email);
+  }
+
+  throw new ValidationError(
+    "No registered user found with that phone number. Please provide their email to send an invitation.",
+  );
+}
+
 
 export async function listGroupInvitations(
   groupId: string,

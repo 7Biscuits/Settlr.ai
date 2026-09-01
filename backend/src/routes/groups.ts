@@ -2,12 +2,16 @@ import type { FastifyInstance } from "fastify";
 import { authenticate } from "../middleware/authenticate.js";
 import {
   createGroupSchema,
+  updateGroupSchema,
+  groupIdParamSchema,
   addMemberSchema,
   invitationIdSchema,
   invitationTokenSchema,
 } from "../schemas/groupSchemas.js";
 import {
   createGroup,
+  updateGroup,
+  deleteGroup,
   listGroupsForUser,
   getGroup,
   addMemberByEmail,
@@ -19,6 +23,18 @@ import {
   leaveGroup,
   listGroupInvitations,
 } from "../services/groupService.js";
+
+import { z } from "zod";
+
+const groupUserParamSchema = z.object({
+  id: z.string().uuid(),
+  userId: z.string().uuid(),
+});
+
+const groupInvitationParamSchema = z.object({
+  id: z.string().uuid(),
+  invitationId: z.string().uuid(),
+});
 
 export async function groupRoutes(app: FastifyInstance): Promise<void> {
   app.addHook("preHandler", authenticate);
@@ -38,14 +54,30 @@ export async function groupRoutes(app: FastifyInstance): Promise<void> {
 
   app.get("/groups/:id", async (request, reply) => {
     const { id: userId } = request.user as { id: string };
-    const { id } = request.params as { id: string };
+    const { id } = groupIdParamSchema.parse(request.params);
     const result = await getGroup(id, userId);
     return reply.send(result);
   });
 
+  app.patch("/groups/:id", async (request, reply) => {
+    const { id: userId } = request.user as { id: string };
+    const { id } = groupIdParamSchema.parse(request.params);
+    const input = updateGroupSchema.parse(request.body);
+    const group = await updateGroup(id, userId, input);
+    return reply.send({ group });
+  });
+
+  app.delete("/groups/:id", async (request, reply) => {
+    const { id: userId } = request.user as { id: string };
+    const { id } = groupIdParamSchema.parse(request.params);
+    await deleteGroup(id, userId);
+    return reply.code(204).send();
+  });
+
+
   app.post("/groups/:id/members", async (request, reply) => {
     const { id: userId } = request.user as { id: string };
-    const { id } = request.params as { id: string };
+    const { id } = groupIdParamSchema.parse(request.params);
     const { email } = addMemberSchema.parse(request.body);
     const member = await addMemberByEmail(id, userId, email);
     return reply.code(201).send({ member });
@@ -55,7 +87,7 @@ export async function groupRoutes(app: FastifyInstance): Promise<void> {
   // an email-bound invitation that the mobile client can deliver via SMS.
   app.post("/groups/:id/invitations", async (request, reply) => {
     const { id: userId } = request.user as { id: string };
-    const { id } = request.params as { id: string };
+    const { id } = groupIdParamSchema.parse(request.params);
     const { email } = addMemberSchema.parse(request.body);
     const result = await inviteOrAddMemberByEmail(id, userId, email);
     return reply.code(result.kind === "member_added" ? 201 : 202).send(result);
@@ -63,15 +95,14 @@ export async function groupRoutes(app: FastifyInstance): Promise<void> {
 
   app.get("/groups/:id/invitations", async (request, reply) => {
     const { id: userId } = request.user as { id: string };
-    const { id } = request.params as { id: string };
+    const { id } = groupIdParamSchema.parse(request.params);
     const invitations = await listGroupInvitations(id, userId);
     return reply.send({ invitations });
   });
 
   app.delete("/groups/:id/invitations/:invitationId", async (request, reply) => {
     const { id: userId } = request.user as { id: string };
-    const { id } = request.params as { id: string };
-    const { invitationId } = invitationIdSchema.parse(request.params);
+    const { id, invitationId } = groupInvitationParamSchema.parse(request.params);
     await cancelGroupInvitation(id, invitationId, userId);
     return reply.code(204).send();
   });
@@ -92,15 +123,16 @@ export async function groupRoutes(app: FastifyInstance): Promise<void> {
 
   app.delete("/groups/:id/members/me", async (request, reply) => {
     const { id: userId } = request.user as { id: string };
-    const { id } = request.params as { id: string };
+    const { id } = groupIdParamSchema.parse(request.params);
     await leaveGroup(id, userId);
     return reply.code(204).send();
   });
 
   app.delete("/groups/:id/members/:userId", async (request, reply) => {
     const { id: requesterId } = request.user as { id: string };
-    const { id, userId } = request.params as { id: string; userId: string };
+    const { id, userId } = groupUserParamSchema.parse(request.params);
     await removeMember(id, requesterId, userId);
     return reply.code(204).send();
   });
 }
+

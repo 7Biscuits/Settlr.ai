@@ -3,6 +3,7 @@ import {
   registerUser,
   verifyCredentials,
   getUserById,
+  revokeToken,
 } from "../services/authService.js";
 import { signAccessToken } from "../utils/jwt.js";
 import { registerSchema, loginSchema } from "../schemas/authSchemas.js";
@@ -27,6 +28,26 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     return reply.send({ user, token });
   });
 
+  app.post(
+    "/auth/logout",
+    { preHandler: authenticate },
+    async (request, reply) => {
+      const { id } = request.user as { id: string };
+      const authHeader = request.headers.authorization;
+      const rawToken = authHeader?.startsWith("Bearer ")
+        ? authHeader.slice(7).trim()
+        : authHeader;
+      if (rawToken) {
+        const decoded = app.jwt.decode<{ exp?: number }>(rawToken);
+        const expiresAt = decoded?.exp
+          ? new Date(decoded.exp * 1000)
+          : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+        await revokeToken({ rawToken, userId: id, expiresAt });
+      }
+      return reply.code(200).send({ success: true, message: "Logged out successfully" });
+    },
+  );
+
   app.get(
     "/auth/me",
     { preHandler: authenticate },
@@ -40,3 +61,4 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     },
   );
 }
+

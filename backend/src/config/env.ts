@@ -16,9 +16,13 @@ const envSchema = z
   DEEPGRAM_API_KEY: z.string().optional().default(""),
   DEEPGRAM_STT_MODEL: z.string().default("nova-3"),
   DEEPGRAM_TTS_MODEL: z.string().default("aura-2-thalia-en"),
+  SUPABASE_URL: z.string().optional().default(""),
+  SUPABASE_SERVICE_ROLE_KEY: z.string().optional().default(""),
+  SUPABASE_STORAGE_BUCKET: z.string().default("receipts"),
   // Comma-separated browser origins. Native apps do not send a browser Origin.
   CORS_ORIGIN: z.string().optional().default(""),
 })
+
   .superRefine((value, ctx) => {
     if (value.NODE_ENV === "production" && !value.CORS_ORIGIN.trim()) {
       ctx.addIssue({

@@ -22,6 +22,20 @@
       "when": 1788252647509,
       "tag": "0002_simple_captain_midlands",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1788277712616,
+      "tag": "0003_features_and_messaging",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1788278640480,
+      "tag": "0004_proposal_lease_and_token",
+      "breakpoints": true
     }
   ]
 }

@@ -40,11 +40,13 @@ export async function createActionProposal(input: {
  * response instead of executing the tool again, making confirmation retries
  * safe even after a lost client response.
  */
+import { randomUUID } from "node:crypto";
+
 export async function claimActionProposal(
   proposalId: string,
   userId: string,
 ): Promise<
-  | { kind: "claimed"; proposal: StoredActionProposal }
+  | { kind: "claimed"; proposal: StoredActionProposal; executionToken: string }
   | { kind: "completed"; result: AgentReply }
 > {
   return db.transaction(async (tx) => {
@@ -59,32 +61,47 @@ export async function claimActionProposal(
     if (proposal.status === "completed" && proposal.result) {
       return { kind: "completed", result: proposal.result as AgentReply };
     }
-    if (proposal.status !== "pending") {
-      throw new ConflictError("This action proposal has already been processed");
-    }
-    if (proposal.expiresAt <= new Date()) {
+    if (proposal.expiresAt <= new Date() || proposal.status === "expired") {
       await tx
         .update(agentActionProposals)
         .set({ status: "expired" })
         .where(eq(agentActionProposals.id, proposal.id));
       throw new ConflictError("This action proposal has expired. Please ask again.");
     }
+    if (proposal.status === "cancelled") {
+      throw new ConflictError("This action proposal was cancelled.");
+    }
+
+    // Concurrency lease check based on executingAt
+    if (proposal.status === "executing" && proposal.executingAt) {
+      const leaseAgeMs = Date.now() - new Date(proposal.executingAt).getTime();
+      if (leaseAgeMs < 60_000) {
+        throw new ConflictError("This action proposal is currently being processed. Please wait.");
+      }
+    }
+
+    const executionToken = randomUUID();
     await tx
       .update(agentActionProposals)
-      .set({ status: "executing" })
-      .where(
-        and(
-          eq(agentActionProposals.id, proposal.id),
-          eq(agentActionProposals.status, "pending"),
-        ),
-      );
-    return { kind: "claimed", proposal: toStoredProposal(proposal) };
+      .set({
+        status: "executing",
+        executingAt: new Date(),
+        executionToken,
+      })
+      .where(eq(agentActionProposals.id, proposal.id));
+
+    return {
+      kind: "claimed",
+      proposal: toStoredProposal(proposal),
+      executionToken,
+    };
   });
 }
 
 export async function completeActionProposal(
   proposalId: string,
   userId: string,
+  executionToken: string,
   result: AgentReply,
 ): Promise<void> {
   await db
@@ -95,9 +112,11 @@ export async function completeActionProposal(
         eq(agentActionProposals.id, proposalId),
         eq(agentActionProposals.userId, userId),
         eq(agentActionProposals.status, "executing"),
+        eq(agentActionProposals.executionToken, executionToken),
       ),
     );
 }
+
 
 function toStoredProposal(proposal: AgentActionProposal): StoredActionProposal {
   return {

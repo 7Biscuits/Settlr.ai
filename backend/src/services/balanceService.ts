@@ -79,6 +79,31 @@ export async function applyExpenseToBalances(
 }
 
 /**
+ * Reverts an expense from the balance ledger by applying the opposite delta
+ * for each split owed to the payer.
+ */
+export async function revertExpenseFromBalances(
+  tx: DbExecutor,
+  input: {
+    groupId: string;
+    paidBy: string;
+    splits: { userId: string; amountOwed: number }[];
+  },
+): Promise<void> {
+  for (const split of input.splits) {
+    if (split.userId === input.paidBy) continue;
+    await adjustPair(
+      tx,
+      input.groupId,
+      input.paidBy,
+      split.userId,
+      -split.amountOwed,
+    );
+  }
+}
+
+
+/**
  * Applies a settlement: the debtor pays the creditor, reducing what the debtor
  * owes. This is called inside the settlement transaction after a verified
  * wallet transfer.
@@ -191,6 +216,32 @@ export async function getOverallBalancesForUser(
 }
 
 /**
+ * How much does `userId` owe `otherUserId` specifically within `groupId`?
+ * Positive result => userId owes otherUserId.
+ */
+export async function getDebtToUserInGroup(
+  groupId: string,
+  userId: string,
+  otherUserId: string,
+): Promise<number> {
+  const [a, b] =
+    userId < otherUserId ? [userId, otherUserId] : [otherUserId, userId];
+  const [row] = await db
+    .select({ amount: balances.amount })
+    .from(balances)
+    .where(
+      and(
+        eq(balances.groupId, groupId),
+        eq(balances.creditorId, a),
+        eq(balances.debtorId, b),
+      ),
+    );
+
+  if (!row) return 0;
+  return userId === b ? row.amount : -row.amount;
+}
+
+/**
  * How much does `userId` owe `otherUserId` overall (across groups)?
  * Positive result => userId owes otherUserId. Used by AI balance tools.
  */
@@ -204,6 +255,7 @@ export async function getNetOwedToUser(
   // netAmount positive => user is owed; owing is the negative of that.
   return -entry.netAmount;
 }
+
 
 /**
  * Resolves a member of `groupId` by (case-insensitive) name. Used by AI tools

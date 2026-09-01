@@ -1,5 +1,6 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { UnauthorizedError } from "../utils/errors.js";
+import { isTokenRevoked } from "../services/authService.js";
 
 export interface AuthUser {
   id: string;
@@ -20,4 +21,14 @@ export async function authenticate(
   } catch {
     throw new UnauthorizedError("Missing or invalid authentication token");
   }
+
+  const authHeader = request.headers.authorization;
+  const rawToken = authHeader?.startsWith("Bearer ")
+    ? authHeader.slice(7).trim()
+    : authHeader;
+
+  if (rawToken && (await isTokenRevoked(rawToken))) {
+    throw new UnauthorizedError("Authentication token has been revoked");
+  }
 }
+

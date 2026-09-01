@@ -5,6 +5,12 @@ import {
   getOverallBalancesForUser,
 } from "../services/balanceService.js";
 
+import { z } from "zod";
+
+const groupBalanceParamSchema = z.object({
+  groupId: z.string().uuid(),
+});
+
 export async function balanceRoutes(app: FastifyInstance): Promise<void> {
   app.addHook("preHandler", authenticate);
 
@@ -16,8 +22,9 @@ export async function balanceRoutes(app: FastifyInstance): Promise<void> {
 
   app.get("/groups/:groupId/balances", async (request, reply) => {
     const { id: userId } = request.user as { id: string };
-    const { groupId } = request.params as { groupId: string };
+    const { groupId } = groupBalanceParamSchema.parse(request.params);
     const balances = await getGroupBalancesForUser(groupId, userId);
     return reply.send({ balances });
   });
 }
+

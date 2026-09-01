@@ -19,6 +19,7 @@ export async function sendInviteSms(
 export function buildInviteMessage(
   inviterName: string,
   groupName: string,
+  inviteUrl: string,
 ): string {
-  return `Hi! ${inviterName} invited you to join the "${groupName}" group on PayPilot to split and settle shared expenses. Get the app to join.`;
+  return `Hi! ${inviterName} invited you to join the "${groupName}" group on PayPilot to split and settle shared expenses. Open this invitation in PayPilot: ${inviteUrl}`;
 }

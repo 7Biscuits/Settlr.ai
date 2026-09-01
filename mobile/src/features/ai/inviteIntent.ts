@@ -17,6 +17,27 @@ export function parseInviteName(command: string): string | null {
   return name && name.length > 0 ? name : null;
 }
 
+export interface GroupInviteIntent {
+  contactName: string;
+  groupName: string;
+}
+
+/**
+ * Recognizes a complete invite request such as “Invite Rahul to the Goa
+ * group”. We resolve only the requested name against contacts on-device; the
+ * email sent to the backend comes from the explicitly selected contact.
+ */
+export function parseGroupInviteIntent(command: string): GroupInviteIntent | null {
+  const match = command
+    .trim()
+    .match(
+      /^(?:please\s+)?(?:invite|add)\s+(.+?)\s+(?:to|into)\s+(?:the\s+)?(.+?)(?:\s+group)?[.!?]*$/i,
+    );
+  const contactName = match?.[1]?.trim();
+  const groupName = match?.[2]?.trim();
+  return contactName && groupName ? { contactName, groupName } : null;
+}
+
 export interface InviteResolution {
   name: string;
   matches: DeviceContact[];

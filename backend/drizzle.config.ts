@@ -1,5 +1,8 @@
 import { defineConfig } from "drizzle-kit";
-import { env } from "./src/config/env.js";
+// Drizzle Kit evaluates this TypeScript file directly, before the project is
+// compiled. It therefore needs the TypeScript source extension here rather
+// than the `.js` extension used by the compiled application.
+import { env } from "./src/config/env.ts";
 
 export default defineConfig({
   schema: "./src/database/schema/index.ts",

@@ -43,7 +43,7 @@ export function ContactChooser({
               >
                 <Text className="text-base text-text">{c.name}</Text>
                 <Text className="text-sm text-muted">
-                  {c.phoneNumbers[0] ?? "No number saved"}
+                  {c.emails[0] ?? c.phoneNumbers[0] ?? "No email or number saved"}
                 </Text>
               </Pressable>
             ))}

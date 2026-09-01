@@ -16,6 +16,7 @@ export interface AgentReply {
   pendingAction?: {
     tool: string;
     arguments: unknown;
+    toolCallId: string;
   };
   // Conversation state to send back on the next turn.
   messages: ChatMessage[];
@@ -78,7 +79,11 @@ export async function runAgent(
           content:
             result.content ??
             `I need your confirmation to run ${call.function.name}.`,
-          pendingAction: { tool: call.function.name, arguments: args },
+          pendingAction: {
+            tool: call.function.name,
+            arguments: args,
+            toolCallId: call.id,
+          },
           messages,
         };
       }
@@ -131,16 +136,26 @@ export async function confirmAction(
     },
   ];
 
-  // Ask the model to summarize the verified outcome (no further tools needed).
-  const result = await chatCompletion(messages, getToolSchemasForLLM());
-  messages.push({ role: "assistant", content: result.content });
-  return {
-    type: "message",
-    content:
+  // Ask the model to summarize the verified outcome. If that secondary model
+  // request fails, the verified tool result remains the source of truth and
+  // the confirmation can still be persisted as completed.
+  let content: string;
+  try {
+    const result = await chatCompletion(messages, getToolSchemasForLLM());
+    content =
       result.content ??
       (toolResult.success
         ? "Action completed."
-        : `Action failed: ${toolResult.error}`),
+        : `Action failed: ${toolResult.error}`);
+  } catch {
+    content = toolResult.success
+      ? "Action completed."
+      : `Action failed: ${toolResult.error}`;
+  }
+  messages.push({ role: "assistant", content });
+  return {
+    type: "message",
+    content,
     messages,
   };
 }

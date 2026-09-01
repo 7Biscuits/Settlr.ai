@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { ToolDefinition } from "../types.js";
 import {
   listGroupsForUser,
-  addMemberByEmail,
+  inviteOrAddMemberByEmail,
 } from "../../services/groupService.js";
 
 export const getGroupsTool: ToolDefinition = {
@@ -17,7 +17,7 @@ export const getGroupsTool: ToolDefinition = {
 };
 
 export const addFriendTool: ToolDefinition = {
-  name: "add_friend",
+  name: "invite_to_group",
   description: "Add a user (by email) as a member of a group.",
   inputSchema: z.object({
     groupId: z.string().uuid(),
@@ -26,7 +26,7 @@ export const addFriendTool: ToolDefinition = {
   sensitive: true,
   async execute(input, ctx) {
     const { groupId, email } = input as { groupId: string; email: string };
-    const member = await addMemberByEmail(groupId, ctx.userId, email);
-    return { success: true, data: { member } };
+    const result = await inviteOrAddMemberByEmail(groupId, ctx.userId, email);
+    return { success: true, data: result };
   },
 };

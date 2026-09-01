@@ -2,13 +2,15 @@ import React, { useState } from "react";
 import { ScrollView, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { addMemberByEmail } from "../../../../src/api/groups";
+import { inviteOrAddMember } from "../../../../src/api/groups";
 import { Card } from "../../../../src/components/Card";
 import { Button } from "../../../../src/components/Button";
 import { Input } from "../../../../src/components/Input";
 import { ContactPicker } from "../../../../src/features/contacts/ContactPicker";
 import type { DeviceContact } from "../../../../src/lib/contacts";
 import { ApiError } from "../../../../src/api/client";
+import { useAuth } from "../../../../src/auth/AuthContext";
+import { buildInviteMessage, sendInviteSms } from "../../../../src/lib/invites";
 
 /**
  * Add a member to a group. Members are added by the email the backend knows.
@@ -20,14 +22,17 @@ export default function AddMemberScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { user } = useAuth();
   const [email, setEmail] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [selectedContact, setSelectedContact] = useState<DeviceContact | null>(null);
 
   function onPickContact(contact: DeviceContact) {
     setPickerOpen(false);
+    setSelectedContact(contact);
     if (contact.emails[0]) {
       setEmail(contact.emails[0]);
       setInfo(`Using ${contact.name}'s email.`);
@@ -44,8 +49,32 @@ export default function AddMemberScreen() {
     setInfo(null);
     setLoading(true);
     try {
-      await addMemberByEmail(id, email.trim());
-      router.back();
+      const result = await inviteOrAddMember(id, email.trim());
+      if (result.kind === "member_added") {
+        router.back();
+        return;
+      }
+
+      const { invitation } = result;
+      if (selectedContact?.phoneNumbers.length) {
+        const delivery = await sendInviteSms(
+          selectedContact.phoneNumbers,
+          buildInviteMessage(
+            user?.name ?? "A friend",
+            invitation.groupName,
+            invitation.inviteUrl,
+          ),
+        );
+        setInfo(
+          delivery === "sent"
+            ? `Invitation sent to ${selectedContact.name}.`
+            : `Invitation created for ${invitation.email}. Share this link with them: ${invitation.inviteUrl}`,
+        );
+      } else {
+        setInfo(
+          `Invitation created for ${invitation.email}. Share this link with them: ${invitation.inviteUrl}`,
+        );
+      }
     } catch (err) {
       setError(
         err instanceof ApiError ? err.message : "Failed to add member",

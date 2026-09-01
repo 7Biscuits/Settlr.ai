@@ -8,16 +8,19 @@ import { signAccessToken } from "../utils/jwt.js";
 import { registerSchema, loginSchema } from "../schemas/authSchemas.js";
 import { authenticate } from "../middleware/authenticate.js";
 import { NotFoundError } from "../utils/errors.js";
+import { createRateLimiter } from "../middleware/rateLimit.js";
+
+const authRateLimit = createRateLimiter({ max: 10, windowMs: 60_000 });
 
 export async function authRoutes(app: FastifyInstance): Promise<void> {
-  app.post("/auth/register", async (request, reply) => {
+  app.post("/auth/register", { preHandler: authRateLimit }, async (request, reply) => {
     const body = registerSchema.parse(request.body);
     const user = await registerUser(body);
     const token = signAccessToken(app, { id: user.id, email: user.email });
     return reply.code(201).send({ user, token });
   });
 
-  app.post("/auth/login", async (request, reply) => {
+  app.post("/auth/login", { preHandler: authRateLimit }, async (request, reply) => {
     const body = loginSchema.parse(request.body);
     const user = await verifyCredentials(body.email, body.password);
     const token = signAccessToken(app, { id: user.id, email: user.email });

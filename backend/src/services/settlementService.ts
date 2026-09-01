@@ -1,9 +1,15 @@
 import { db } from "../database/client.js";
 import { settlements, type Settlement } from "../database/schema/settlements.js";
-import { transferFunds } from "./walletService.js";
-import { applySettlementToBalances, getNetOwedToUser } from "./balanceService.js";
+import { balances } from "../database/schema/balances.js";
+import {
+  assertMatchingTransaction,
+  findByIdempotencyKey,
+  transferFundsInTransaction,
+} from "./walletService.js";
+import { applySettlementToBalances } from "./balanceService.js";
 import { assertMember } from "./groupService.js";
 import { ValidationError, ConflictError } from "../utils/errors.js";
+import { and, eq } from "drizzle-orm";
 
 /**
  * Settles a debt from `fromUserId` to `toUserId` within a group by moving
@@ -30,27 +36,68 @@ export async function settleDebt(input: {
   await assertMember(groupId, fromUserId);
   await assertMember(groupId, toUserId);
 
-  // Do not allow settling more than what is actually owed.
-  const owed = await getNetOwedToUser(fromUserId, toUserId);
-  if (owed <= 0) {
-    throw new ConflictError("There is no outstanding debt to settle");
-  }
-  if (amount > owed) {
-    throw new ValidationError(
-      `Settlement amount (${amount}) exceeds the outstanding debt (${owed})`,
-    );
-  }
-
-  // Step 1: execute the verified wallet transfer (enforces funds + idempotency).
-  const txn = await transferFunds(
-    fromUserId,
-    toUserId,
-    amount,
-    idempotencyKey,
-  );
-
-  // Step 2: record settlement and update balances in a single transaction.
   return db.transaction(async (tx) => {
+    const existingTransaction = await findByIdempotencyKey(tx, idempotencyKey);
+    if (existingTransaction) {
+      assertMatchingTransaction(existingTransaction, {
+        type: "settlement",
+        fromUserId,
+        toUserId,
+        amount,
+      });
+      const [existingSettlement] = await tx
+        .select()
+        .from(settlements)
+        .where(eq(settlements.transactionId, existingTransaction.id));
+      if (!existingSettlement || existingSettlement.groupId !== groupId) {
+        throw new ConflictError(
+          "This idempotency key was already used for a different settlement",
+        );
+      }
+      return {
+        settlement: existingSettlement,
+        transactionId: existingTransaction.id,
+      };
+    }
+
+    // Lock the group-specific ledger row before checking the debt and applying
+    // the reduction, keeping the wallet movement and balance update atomic.
+    const [a, b] =
+      fromUserId < toUserId
+        ? [fromUserId, toUserId]
+        : [toUserId, fromUserId];
+    const [balance] = await tx
+      .select()
+      .from(balances)
+      .where(
+        and(
+          eq(balances.groupId, groupId),
+          eq(balances.creditorId, a),
+          eq(balances.debtorId, b),
+        ),
+      )
+      .for("update");
+    const owed = balance
+      ? fromUserId === balance.creditorId
+        ? -balance.amount
+        : balance.amount
+      : 0;
+    if (owed <= 0) {
+      throw new ConflictError("There is no outstanding debt to settle in this group");
+    }
+    if (amount > owed) {
+      throw new ValidationError(
+        `Settlement amount (${amount}) exceeds the outstanding debt (${owed})`,
+      );
+    }
+
+    const txn = await transferFundsInTransaction(tx, {
+      fromUserId,
+      toUserId,
+      amount,
+      idempotencyKey,
+      type: "settlement",
+    });
     await applySettlementToBalances(tx, {
       groupId,
       fromUserId,

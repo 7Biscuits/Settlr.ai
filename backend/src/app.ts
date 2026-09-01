@@ -12,14 +12,34 @@ import { balanceRoutes } from "./routes/balances.js";
 import { walletRoutes } from "./routes/wallet.js";
 import { agentRoutes } from "./routes/agent.js";
 import { voiceRoutes } from "./routes/voice.js";
+import { dashboardRoutes } from "./routes/dashboard.js";
 
 export async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({
     logger: env.NODE_ENV !== "test",
+    bodyLimit: 1_000_000,
   });
 
-  await app.register(cors, { origin: true });
+  const corsOrigins = env.CORS_ORIGIN.split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+  await app.register(cors, {
+    origin: env.NODE_ENV === "production" ? corsOrigins : true,
+  });
   await app.register(jwt, { secret: env.JWT_SECRET });
+
+  // Lightweight baseline headers without an additional dependency. The API is
+  // JSON-only, so a restrictive CSP is unnecessary here.
+  app.addHook("onSend", async (_request, reply, payload) => {
+    reply.header("X-Content-Type-Options", "nosniff");
+    reply.header("X-Frame-Options", "DENY");
+    reply.header("Referrer-Policy", "no-referrer");
+    reply.header("Permissions-Policy", "camera=(), geolocation=()");
+    if (env.NODE_ENV === "production") {
+      reply.header("Strict-Transport-Security", "max-age=15552000; includeSubDomains");
+    }
+    return payload;
+  });
 
   // Centralized error handling maps domain errors and validation to HTTP codes.
   app.setErrorHandler((error, _request, reply) => {
@@ -41,6 +61,7 @@ export async function buildApp(): Promise<FastifyInstance> {
 
   await app.register(healthRoutes);
   await app.register(authRoutes);
+  await app.register(dashboardRoutes);
   await app.register(groupRoutes);
   await app.register(expenseRoutes);
   await app.register(balanceRoutes);

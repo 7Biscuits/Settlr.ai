@@ -7,3 +7,5 @@ export * from "./balances.js";
 export * from "./wallets.js";
 export * from "./transactions.js";
 export * from "./settlements.js";
+export * from "./groupInvitations.js";
+export * from "./agentActionProposals.js";

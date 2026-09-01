@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1788245534188,
+      "tag": "0000_curvy_ultron",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1788248094741,
+      "tag": "0001_secret_lightspeed",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1788252647509,
+      "tag": "0002_simple_captain_midlands",
+      "breakpoints": true
+    }
+  ]
+}

@@ -35,7 +35,8 @@ async function adjustPair(
         eq(balances.creditorId, a),
         eq(balances.debtorId, b),
       ),
-    );
+    )
+    .for("update");
 
   if (existing) {
     await tx

@@ -18,8 +18,8 @@ an LLM agent reasons, plans, and acts through controlled backend tools rather th
 touching the database directly; users record and split group expenses, track balances,
 and settle debts via an in-app demo wallet, using text or voice. The tech stack is a
 TypeScript monorepo: Next.js + Tailwind CSS frontend, Node.js + Fastify backend,
-PostgreSQL with Drizzle ORM, DeepSeek for LLM tool calling, and ElevenLabs plus
-speech-to-text for voice. The hard constraints are architectural: the LLM decides, the
+PostgreSQL with Drizzle ORM, DeepSeek for LLM tool calling, and Deepgram for speech-to-text
+and text-to-speech. The hard constraints are architectural: the LLM decides, the
 backend enforces — every financial action passes backend validation, authorization,
 insufficient-funds checks, duplicate-prevention, and explicit user confirmation for
 sensitive actions, with the database as the single source of truth.
@@ -35,9 +35,8 @@ so implementation could proceed; each remains flagged for your correction.
 - [ ] **Wallet currency is undefined.** The PRD reads "In-App Wallet (The currency is )"
   with a blank, and elsewhere "demo currency". **Default used:** a demo currency stored
   as integer minor units (1 unit = 1/100). Confirm the label.
-- [ ] **Voice provider split is ambiguous.** ElevenLabs is primarily text-to-speech while
-  the docs also require "Speech-to-Text". **Default used:** browser Web Speech API for
-  STT input, server-side ElevenLabs proxy for optional TTS. Confirm the STT provider.
+- [x] **Voice provider choice.** The mobile app records audio, the backend uses Deepgram
+  for STT and TTS, and the app plays the returned MP3. Provider credentials remain server-side.
 - [ ] **Auth mechanism unspecified.** **Default used:** email/password with JWT access
   tokens and argon2-hashed passwords. Confirm.
 - [ ] **Monorepo tooling unspecified.** **Default used:** pnpm workspaces (config
@@ -571,10 +570,10 @@ action confirmations, completing the end-to-end demo.
 ```bash
 npm --prefix frontend run build
 npm --prefix frontend run dev
-# backend running with DEEPSEEK_API_KEY (and ELEVENLABS_API_KEY for TTS)
+# backend running with DEEPSEEK_API_KEY and DEEPGRAM_API_KEY
 ```
 
-**Approval required:** ⚠️ Requires ElevenLabs/LLM keys and executes money-moving actions
+**Approval required:** ⚠️ Requires Deepgram/LLM keys and executes money-moving actions
 through the agent behind the confirmation gate.
 
 ---
@@ -589,7 +588,7 @@ available in this environment:
 - Migration generation/apply and seeding (`db:generate`, `db:migrate`, `db:seed`).
 - End-to-end balance, expense, wallet, and settlement behavior against a real DB.
 - Agent multi-step chaining and confirmation flow against DeepSeek (`DEEPSEEK_API_KEY`).
-- ElevenLabs TTS synthesis (`ELEVENLABS_API_KEY`); STT uses the browser Web Speech API.
+- Deepgram STT/TTS (`DEEPGRAM_API_KEY`) against a live provider account.
 
 ## Verified in This Environment
 

@@ -6,6 +6,7 @@ describe("tool registry", () => {
     const names = listTools().map((t) => t.name).sort();
     expect(names).toContain("get_balance");
     expect(names).toContain("create_expense");
+    expect(names).toContain("invite_to_group");
     expect(names).toContain("settle_debt");
     expect(names).toContain("transfer_wallet_funds");
   });

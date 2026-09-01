@@ -4,7 +4,7 @@ import { expenseSplits } from "../database/schema/expenseSplits.js";
 import { assertMember } from "./groupService.js";
 import { applyExpenseToBalances } from "./balanceService.js";
 import { splitEqual, validateCustomSplit } from "./splitCalculator.js";
-import { ValidationError } from "../utils/errors.js";
+import { NotFoundError, ValidationError } from "../utils/errors.js";
 import { eq } from "drizzle-orm";
 import type { CreateExpenseInput } from "../schemas/expenseSchemas.js";
 
@@ -94,7 +94,7 @@ export async function getExpense(
     .from(expenses)
     .where(eq(expenses.id, expenseId));
   if (!expense) {
-    throw new ValidationError("Expense not found");
+    throw new NotFoundError("Expense not found");
   }
   await assertMember(expense.groupId, requesterId);
   const splits = await db

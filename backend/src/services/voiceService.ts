@@ -1,47 +1,70 @@
 import { env } from "../config/env.js";
 
+type DeepgramTranscriptResponse = {
+  results?: {
+    channels?: Array<{ alternatives?: Array<{ transcript?: string }> }>;
+  };
+};
+
 /**
- * Speech-to-text via ElevenLabs. The provider key never leaves the server.
- * The client uploads a recorded clip (base64) and receives only the transcript,
- * which it then sends through the normal agent chat flow. No LLM/STT provider
- * is ever contacted directly by the client.
+ * Deepgram pre-recorded STT. Audio is supplied by the authenticated mobile app
+ * but the Deepgram key stays exclusively on the backend.
  */
 export async function transcribeAudio(
   audioBase64: string,
   mimeType = "audio/m4a",
 ): Promise<string> {
-  if (!env.ELEVENLABS_API_KEY) {
-    throw new Error("ELEVENLABS_API_KEY is not configured");
-  }
-
-  const bytes = Buffer.from(audioBase64, "base64");
-  const form = new FormData();
-  const blob = new Blob([bytes], { type: mimeType });
-  form.append("file", blob, filenameForMime(mimeType));
-  form.append("model_id", "scribe_v1");
-
-  const res = await fetch("https://api.elevenlabs.io/v1/speech-to-text", {
+  assertDeepgramConfigured();
+  const params = new URLSearchParams({
+    model: env.DEEPGRAM_STT_MODEL,
+    smart_format: "true",
+    punctuate: "true",
+  });
+  const response = await fetch(`https://api.deepgram.com/v1/listen?${params}`, {
     method: "POST",
     headers: {
-      "xi-api-key": env.ELEVENLABS_API_KEY,
+      Authorization: `Token ${env.DEEPGRAM_API_KEY}`,
+      "Content-Type": mimeType === "audio/m4a" ? "audio/mp4" : mimeType,
     },
-    body: form,
+    body: Buffer.from(audioBase64, "base64"),
   });
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`ElevenLabs STT error ${res.status}: ${text}`);
+  if (!response.ok) {
+    throw new Error(`Deepgram STT error ${response.status}: ${await response.text()}`);
   }
 
-  const json = (await res.json()) as { text?: string };
-  return json.text ?? "";
+  const payload = (await response.json()) as DeepgramTranscriptResponse;
+  return payload.results?.channels?.[0]?.alternatives?.[0]?.transcript?.trim() ?? "";
 }
 
-/** Maps a MIME type to a filename the STT API accepts. */
-function filenameForMime(mimeType: string): string {
-  if (mimeType.includes("webm")) return "audio.webm";
-  if (mimeType.includes("wav")) return "audio.wav";
-  if (mimeType.includes("mp3") || mimeType.includes("mpeg")) return "audio.mp3";
-  if (mimeType.includes("mp4")) return "audio.mp4";
-  return "audio.m4a";
+/** Synthesizes a concise agent reply as MP3 using Deepgram Aura TTS. */
+export async function synthesizeSpeech(text: string): Promise<{
+  audioBase64: string;
+  mimeType: "audio/mpeg";
+}> {
+  assertDeepgramConfigured();
+  const params = new URLSearchParams({
+    model: env.DEEPGRAM_TTS_MODEL,
+    encoding: "mp3",
+  });
+  const response = await fetch(`https://api.deepgram.com/v1/speak?${params}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Token ${env.DEEPGRAM_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ text }),
+  });
+  if (!response.ok) {
+    throw new Error(`Deepgram TTS error ${response.status}: ${await response.text()}`);
+  }
+  return {
+    audioBase64: Buffer.from(await response.arrayBuffer()).toString("base64"),
+    mimeType: "audio/mpeg",
+  };
+}
+
+function assertDeepgramConfigured(): void {
+  if (!env.DEEPGRAM_API_KEY) {
+    throw new Error("DEEPGRAM_API_KEY is not configured");
+  }
 }

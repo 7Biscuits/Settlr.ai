@@ -22,24 +22,28 @@ export async function registerUser(input: {
 }): Promise<PublicUser> {
   const email = input.email.toLowerCase().trim();
 
-  const existing = await db.select().from(users).where(eq(users.email, email));
-  if (existing.length > 0) {
-    throw new ConflictError("A user with this email already exists");
-  }
-
   const passwordHash = await hashPassword(input.password);
-  const [created] = await db
-    .insert(users)
-    .values({ email, name: input.name, passwordHash })
-    .returning();
+  try {
+    return await db.transaction(async (tx) => {
+      const [created] = await tx
+        .insert(users)
+        .values({ email, name: input.name.trim(), passwordHash })
+        .returning();
 
-  // Every user gets a wallet with a zero balance.
-  await db
-    .insert(wallets)
-    .values({ userId: created!.id, balance: 0 })
-    .onConflictDoNothing();
+      if (!created) {
+        throw new Error("User creation did not return a row");
+      }
 
-  return toPublic(created!);
+      // Keep account and wallet creation atomic so every user starts usable.
+      await tx.insert(wallets).values({ userId: created.id, balance: 0 });
+      return toPublic(created);
+    });
+  } catch (error) {
+    if (isUniqueViolation(error)) {
+      throw new ConflictError("A user with this email already exists");
+    }
+    throw error;
+  }
 }
 
 export async function verifyCredentials(
@@ -67,4 +71,13 @@ export async function verifyCredentials(
 export async function getUserById(id: string): Promise<PublicUser | null> {
   const [user] = await db.select().from(users).where(eq(users.id, id));
   return user ? toPublic(user) : null;
+}
+
+function isUniqueViolation(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: string }).code === "23505"
+  );
 }

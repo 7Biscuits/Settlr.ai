@@ -15,3 +15,17 @@ export function transcribe(
     body: JSON.stringify({ audioBase64, mimeType }),
   });
 }
+
+/** Requests Deepgram-generated MP3 audio through the backend proxy. */
+export function synthesize(text: string): Promise<{
+  audioBase64: string;
+  mimeType: "audio/mpeg";
+}> {
+  return apiFetch<{ audioBase64: string; mimeType: "audio/mpeg" }>(
+    "/voice/tts",
+    {
+      method: "POST",
+      body: JSON.stringify({ text }),
+    },
+  );
+}

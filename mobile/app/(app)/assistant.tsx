@@ -14,14 +14,16 @@ import { Input } from "../../src/components/Input";
 import { Button } from "../../src/components/Button";
 import { ConfirmSheet } from "../../src/components/ConfirmSheet";
 import { useVoiceRecorder } from "../../src/features/ai/useVoiceRecorder";
+import { useVoicePlayer } from "../../src/features/ai/useVoicePlayer";
 import {
-  parseInviteName,
+  parseGroupInviteIntent,
   resolveInviteContacts,
+  type GroupInviteIntent,
 } from "../../src/features/ai/inviteIntent";
 import { ContactChooser } from "../../src/features/ai/ContactChooser";
+import type { DeviceContact } from "../../src/lib/contacts";
 import { buildInviteMessage, sendInviteSms } from "../../src/lib/invites";
 import { useAuth } from "../../src/auth/AuthContext";
-import type { DeviceContact } from "../../src/lib/contacts";
 import { ApiError } from "../../src/api/client";
 import { transcribe } from "../../src/api/voice";
 import * as FileSystem from "expo-file-system";
@@ -41,24 +43,42 @@ interface ChatEntry {
   text: string;
 }
 
-/** Finds the id of the last assistant tool call in the conversation. */
-function extractToolCallId(messages: unknown[]): string {
+interface InvitationDelivery {
+  contact: DeviceContact;
+  groupName: string;
+}
+
+/** Reads the verified invite result returned by the backend tool message. */
+function extractInvitationResult(messages: unknown[]): {
+  kind: "member_added" | "invitation_created" | "invitation_existing";
+  member?: { name: string; email: string };
+  invitation?: { groupName: string; email: string; inviteUrl: string };
+} | null {
   for (let i = messages.length - 1; i >= 0; i--) {
-    const m = messages[i] as {
-      role?: string;
-      tool_calls?: { id: string }[];
-    };
-    if (m?.role === "assistant" && m.tool_calls && m.tool_calls.length > 0) {
-      return m.tool_calls[m.tool_calls.length - 1]!.id;
+    const message = messages[i] as { role?: string; content?: string };
+    if (message.role !== "tool" || !message.content) continue;
+    try {
+      const result = JSON.parse(message.content) as {
+        success?: boolean;
+        data?: {
+          kind?: "member_added" | "invitation_created" | "invitation_existing";
+          member?: { name: string; email: string };
+          invitation?: { groupName: string; email: string; inviteUrl: string };
+        };
+      };
+      if (result.success && result.data?.kind) return result.data as NonNullable<ReturnType<typeof extractInvitationResult>>;
+    } catch {
+      // Ignore unrelated tool results in the assistant conversation.
     }
   }
-  return "";
+  return null;
 }
 
 export default function AssistantScreen() {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const voice = useVoiceRecorder();
+  const player = useVoicePlayer();
 
   const [entries, setEntries] = useState<ChatEntry[]>([]);
   const [input, setInput] = useState("");
@@ -68,40 +88,50 @@ export default function AssistantScreen() {
   // Backend-proposed sensitive action awaiting confirmation.
   const [pending, setPending] = useState<{
     action: PendingAction;
-    messages: unknown[];
     content: string;
+    speakReply: boolean;
   } | null>(null);
   const [confirming, setConfirming] = useState(false);
-
-  // Local voice-invite resolution (device contacts, native SMS).
-  const [inviteMatches, setInviteMatches] = useState<DeviceContact[] | null>(
-    null,
-  );
-  const [inviteContext, setInviteContext] = useState<string>("");
+  const [contactMatches, setContactMatches] = useState<DeviceContact[] | null>(null);
+  const [inviteIntent, setInviteIntent] = useState<GroupInviteIntent | null>(null);
+  const [inviteSpeakReply, setInviteSpeakReply] = useState(false);
+  const [pendingDelivery, setPendingDelivery] = useState<InvitationDelivery | null>(null);
 
   function pushAssistant(text: string) {
     setEntries((e) => [...e, { role: "assistant", text }]);
   }
 
-  async function handleSend(text: string) {
+  async function handleSend(text: string, speakReply = false) {
     const trimmed = text.trim();
     if (!trimmed) return;
     setInput("");
     setEntries((e) => [...e, { role: "user", text: trimmed }]);
 
-    // Voice/text invite is handled on-device (contacts + native messaging).
-    // Group membership itself still goes through the backend when the user
-    // adds the resolved person; here we launch the native invite.
-    const inviteName = parseInviteName(trimmed);
-    if (inviteName) {
-      await handleInvite(inviteName, trimmed);
+    const intent = parseGroupInviteIntent(trimmed);
+    if (intent) {
+      await resolveGroupInvite(intent, speakReply);
       return;
     }
 
+    await sendToBackend(trimmed, undefined, speakReply);
+  }
+
+  async function sendToBackend(
+    message: string,
+    delivery?: InvitationDelivery,
+    speakReply = false,
+  ) {
     setLoading(true);
     try {
-      const reply = await chat(trimmed, conversation);
-      applyReply(reply);
+      const reply = await chat(message, conversation);
+      if (
+        delivery &&
+        reply.type === "confirmation_required" &&
+        reply.pendingAction?.tool === "invite_to_group"
+      ) {
+        setPendingDelivery(delivery);
+      }
+      await applyReply(reply, speakReply);
     } catch (err) {
       pushAssistant(
         err instanceof ApiError ? err.message : "Something went wrong.",
@@ -111,17 +141,62 @@ export default function AssistantScreen() {
     }
   }
 
-  function applyReply(reply: AgentReply) {
+  async function resolveGroupInvite(intent: GroupInviteIntent, speakReply: boolean) {
+    setInviteIntent(intent);
+    setInviteSpeakReply(speakReply);
+    try {
+      const { matches } = await resolveInviteContacts(intent.contactName);
+      if (matches.length === 0) {
+        pushAssistant(
+          `I couldn't find ${intent.contactName} in your contacts. Choose a contact from the group screen or ask again with their PayPilot email.`,
+        );
+      } else if (matches.length === 1) {
+        await beginInvite(matches[0]!, intent, speakReply);
+      } else {
+        pushAssistant(`Choose which ${intent.contactName} you want to invite.`);
+        setContactMatches(matches);
+      }
+    } catch {
+      pushAssistant("I couldn't access contacts. Check contacts permission and try again.");
+    }
+  }
+
+  async function beginInvite(
+    contact: DeviceContact,
+    intent = inviteIntent,
+    speakReply = inviteSpeakReply,
+  ) {
+    setContactMatches(null);
+    if (!intent) return;
+    const email = contact.emails[0]?.trim();
+    if (!email) {
+      pushAssistant(
+        `${contact.name} has no email saved. Group invitations are email-bound, so add their email to Contacts or use the group screen to enter it.`,
+      );
+      return;
+    }
+    const backendRequest = `Invite ${contact.name} with email ${email} to the ${intent.groupName} group. Use the invite_to_group tool after resolving the group. This requires confirmation.`;
+    await sendToBackend(
+      backendRequest,
+      { contact, groupName: intent.groupName },
+      speakReply,
+    );
+  }
+
+  async function applyReply(reply: AgentReply, speakReply = false) {
     setConversation(reply.messages);
     if (reply.type === "confirmation_required" && reply.pendingAction) {
       setPending({
         action: reply.pendingAction,
-        messages: reply.messages,
         content: reply.content,
+        speakReply,
       });
       if (reply.content) pushAssistant(reply.content);
     } else {
       pushAssistant(reply.content);
+    }
+    if (speakReply && reply.content) {
+      await player.speak(reply.content);
     }
   }
 
@@ -129,65 +204,46 @@ export default function AssistantScreen() {
     if (!pending) return;
     setConfirming(true);
     try {
-      const toolCallId = extractToolCallId(pending.messages);
-      const reply = await confirm(
-        pending.action.tool,
-        pending.action.arguments,
-        toolCallId,
-        pending.messages,
-      );
+      const speakReply = pending.speakReply;
+      const reply = await confirm(pending.action.proposalId);
       setPending(null);
-      applyReply(reply);
+      await applyReply(reply, speakReply);
+      const invite = extractInvitationResult(reply.messages);
+      if (pendingDelivery && invite) {
+        if (invite.kind === "member_added") {
+          pushAssistant(`${invite.member?.name ?? pendingDelivery.contact.name} is now a member of the group.`);
+        } else if (invite.invitation) {
+          if (pendingDelivery.contact.phoneNumbers.length === 0) {
+            pushAssistant(`Invitation created for ${invite.invitation.email}. This contact has no phone number; share this link: ${invite.invitation.inviteUrl}`);
+            setPendingDelivery(null);
+            return;
+          }
+          const outcome = await sendInviteSms(
+            pendingDelivery.contact.phoneNumbers,
+            buildInviteMessage(
+              user?.name ?? "A friend",
+              invite.invitation.groupName,
+              invite.invitation.inviteUrl,
+            ),
+          );
+          if (outcome === "sent") {
+            pushAssistant(`The invitation link was sent to ${pendingDelivery.contact.name}.`);
+          } else if (outcome === "unavailable") {
+            pushAssistant(`Invitation created for ${invite.invitation.email}. This device cannot send SMS; share this link: ${invite.invitation.inviteUrl}`);
+          } else {
+            pushAssistant(`Invitation created for ${invite.invitation.email}. Sending was cancelled; share this link: ${invite.invitation.inviteUrl}`);
+          }
+        }
+      }
+      setPendingDelivery(null);
     } catch (err) {
       setPending(null);
+      setPendingDelivery(null);
       pushAssistant(
         err instanceof ApiError ? err.message : "The action could not be completed.",
       );
     } finally {
       setConfirming(false);
-    }
-  }
-
-  async function handleInvite(name: string, original: string) {
-    setInviteContext(original);
-    try {
-      const { matches } = await resolveInviteContacts(name);
-      if (matches.length === 0) {
-        pushAssistant(
-          `I couldn't find "${name}" in your contacts. You can add them by email from the group screen.`,
-        );
-        return;
-      }
-      if (matches.length === 1) {
-        await launchInvite(matches[0]!);
-      } else {
-        // Multiple people share the name — ask the user to choose.
-        pushAssistant(
-          `You have multiple contacts named "${name}". Choose which one to invite.`,
-        );
-        setInviteMatches(matches);
-      }
-    } catch {
-      pushAssistant("I couldn't access contacts for the invitation.");
-    }
-  }
-
-  async function launchInvite(contact: DeviceContact) {
-    setInviteMatches(null);
-    if (contact.phoneNumbers.length === 0) {
-      pushAssistant(
-        `${contact.name} has no phone number saved, so I can't send an SMS invite.`,
-      );
-      return;
-    }
-    const message = buildInviteMessage(user?.name ?? "A friend", "PayPilot");
-    const result = await sendInviteSms(contact.phoneNumbers, message);
-    if (result === "sent") {
-      pushAssistant(`Invitation sent to ${contact.name}.`);
-    } else if (result === "unavailable") {
-      pushAssistant("This device can't send SMS, so the invite wasn't sent.");
-    } else {
-      pushAssistant(`Invitation to ${contact.name} was cancelled.`);
     }
   }
 
@@ -210,7 +266,7 @@ export default function AssistantScreen() {
           pushAssistant("I couldn't hear anything. Please try again.");
           return;
         }
-        await handleSend(trimmed);
+        await handleSend(trimmed, true);
       } catch (err) {
         pushAssistant(
           err instanceof ApiError
@@ -285,6 +341,9 @@ export default function AssistantScreen() {
       {voice.error ? (
         <Text className="px-4 text-sm text-danger">{voice.error}</Text>
       ) : null}
+      {player.error ? (
+        <Text className="px-4 text-sm text-danger">Voice reply: {player.error}</Text>
+      ) : null}
 
       <View className="flex-row items-end gap-2 border-t border-border p-3">
         <View className="flex-1">
@@ -296,8 +355,9 @@ export default function AssistantScreen() {
           />
         </View>
         <Button
-          title={voice.recording ? "■" : "🎤"}
+          title={voice.recording ? "■" : player.speaking ? "🔊" : "🎤"}
           variant="secondary"
+          disabled={player.speaking}
           onPress={handleMic}
         />
         <Button title="Send" loading={loading} onPress={() => handleSend(input)} />
@@ -324,15 +384,19 @@ export default function AssistantScreen() {
         confirmLabel="Confirm & execute"
         loading={confirming}
         onConfirm={handleConfirm}
-        onCancel={() => setPending(null)}
+        onCancel={() => {
+          setPending(null);
+          setPendingDelivery(null);
+        }}
       />
 
       <ContactChooser
-        visible={!!inviteMatches}
-        contacts={inviteMatches ?? []}
-        onSelect={launchInvite}
-        onCancel={() => setInviteMatches(null)}
+        visible={!!contactMatches}
+        contacts={contactMatches ?? []}
+        onSelect={(contact) => void beginInvite(contact)}
+        onCancel={() => setContactMatches(null)}
       />
+
     </KeyboardAvoidingView>
   );
 }

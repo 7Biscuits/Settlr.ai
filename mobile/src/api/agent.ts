@@ -20,13 +20,10 @@ export function chat(
  * returns the verified result; the client never assumes success on its own.
  */
 export function confirm(
-  tool: string,
-  args: unknown,
-  toolCallId: string,
-  messages: unknown[],
+  proposalId: string,
 ): Promise<AgentReply> {
   return apiFetch<AgentReply>("/agent/confirm", {
     method: "POST",
-    body: JSON.stringify({ tool, arguments: args, toolCallId, messages }),
+    body: JSON.stringify({ proposalId }),
   });
 }

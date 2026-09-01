@@ -26,12 +26,30 @@ export interface GroupMember {
   id: string;
   name: string;
   email: string;
+  role?: "owner" | "member" | string;
 }
 
 export interface GroupDetail {
   group: Group;
   members: GroupMember[];
 }
+
+export interface GroupInvitation {
+  id: string;
+  groupId: string;
+  groupName: string;
+  email: string;
+  status: "pending" | "accepted" | "cancelled" | "expired" | string;
+  expiresAt: string;
+  inviteUrl: string;
+}
+
+export type InviteOrAddResult =
+  | { kind: "member_added"; member: GroupMember }
+  | {
+      kind: "invitation_created" | "invitation_existing";
+      invitation: GroupInvitation;
+    };
 
 export interface ExpenseSplit {
   userId: string;
@@ -69,7 +87,17 @@ export interface Transaction {
   createdAt: string;
 }
 
+export interface DashboardSummary {
+  totalOwed: number;
+  totalOwing: number;
+  walletBalance: number;
+  balances: DirectedBalance[];
+  groups: Group[];
+  recentActivity: Transaction[];
+}
+
 export interface PendingAction {
+  proposalId: string;
   tool: string;
   arguments: unknown;
 }

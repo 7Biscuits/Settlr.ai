@@ -1,4 +1,4 @@
-import { db } from "../database/client.js";
+import { db, type DbExecutor } from "../database/client.js";
 import { wallets, type Wallet } from "../database/schema/wallets.js";
 import { transactions, type Transaction } from "../database/schema/transactions.js";
 import {
@@ -9,16 +9,7 @@ import {
 import { and, eq, or, desc } from "drizzle-orm";
 
 export async function getOrCreateWallet(userId: string): Promise<Wallet> {
-  const [existing] = await db
-    .select()
-    .from(wallets)
-    .where(eq(wallets.userId, userId));
-  if (existing) return existing;
-  const [created] = await db
-    .insert(wallets)
-    .values({ userId, balance: 0 })
-    .returning();
-  return created!;
+  return db.transaction((tx) => getOrCreateWalletTx(tx, userId));
 }
 
 export async function getWalletBalance(userId: string): Promise<number> {
@@ -41,6 +32,11 @@ export async function topUp(
   return db.transaction(async (tx) => {
     const existingTxn = await findByIdempotencyKey(tx, idempotencyKey);
     if (existingTxn) {
+      assertMatchingTransaction(existingTxn, {
+        type: "topup",
+        toUserId: userId,
+        amount,
+      });
       const w = await getOrCreateWalletTx(tx, userId);
       return { balance: w.balance, transaction: existingTxn };
     }
@@ -91,47 +87,15 @@ export async function transferFunds(
     throw new ValidationError("Transfer amount must be a positive integer");
   }
 
-  return db.transaction(async (tx) => {
-    const existingTxn = await findByIdempotencyKey(tx, idempotencyKey);
-    if (existingTxn) {
-      // Idempotent: return the already-executed transaction without repeating.
-      return existingTxn;
-    }
-
-    const fromWallet =
-      (await selectWalletForUpdate(tx, fromUserId)) ??
-      (await insertWalletTx(tx, fromUserId));
-    const toWallet =
-      (await selectWalletForUpdate(tx, toUserId)) ??
-      (await insertWalletTx(tx, toUserId));
-
-    if (fromWallet.balance < amount) {
-      throw new ConflictError("Insufficient wallet funds");
-    }
-
-    await tx
-      .update(wallets)
-      .set({ balance: fromWallet.balance - amount, updatedAt: new Date() })
-      .where(eq(wallets.id, fromWallet.id));
-    await tx
-      .update(wallets)
-      .set({ balance: toWallet.balance + amount, updatedAt: new Date() })
-      .where(eq(wallets.id, toWallet.id));
-
-    const [txn] = await tx
-      .insert(transactions)
-      .values({
-        type: "transfer",
-        fromUserId,
-        toUserId,
-        amount,
-        status: "completed",
-        idempotencyKey,
-      })
-      .returning();
-
-    return txn!;
-  });
+  return db.transaction((tx) =>
+    transferFundsInTransaction(tx, {
+      fromUserId,
+      toUserId,
+      amount,
+      idempotencyKey,
+      type: "transfer",
+    }),
+  );
 }
 
 export async function listTransactions(
@@ -151,7 +115,7 @@ export async function listTransactions(
 
 // --- transaction-scoped helpers ---
 
-type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+type Tx = DbExecutor;
 
 async function findByIdempotencyKey(
   tx: Tx,
@@ -180,8 +144,15 @@ async function insertWalletTx(tx: Tx, userId: string): Promise<Wallet> {
   const [row] = await tx
     .insert(wallets)
     .values({ userId, balance: 0 })
+    .onConflictDoNothing()
     .returning();
-  return row!;
+  if (row) return row;
+
+  const existing = await selectWalletForUpdate(tx, userId);
+  if (!existing) {
+    throw new NotFoundError("User wallet could not be created");
+  }
+  return existing;
 }
 
 async function getOrCreateWalletTx(tx: Tx, userId: string): Promise<Wallet> {
@@ -192,3 +163,87 @@ async function getOrCreateWalletTx(tx: Tx, userId: string): Promise<Wallet> {
 }
 
 export { and, eq };
+
+export async function transferFundsInTransaction(
+  tx: Tx,
+  input: {
+    fromUserId: string;
+    toUserId: string;
+    amount: number;
+    idempotencyKey: string;
+    type: "transfer" | "settlement";
+  },
+): Promise<Transaction> {
+  const { fromUserId, toUserId, amount, idempotencyKey, type } = input;
+  const existingTxn = await findByIdempotencyKey(tx, idempotencyKey);
+  if (existingTxn) {
+    assertMatchingTransaction(existingTxn, {
+      type,
+      fromUserId,
+      toUserId,
+      amount,
+    });
+    return existingTxn;
+  }
+
+  // Lock wallets in a stable order so two opposite-direction transfers cannot
+  // deadlock while waiting on each other's row.
+  const [firstUserId, secondUserId] =
+    fromUserId < toUserId ? [fromUserId, toUserId] : [toUserId, fromUserId];
+  const firstWallet = await getOrCreateWalletTx(tx, firstUserId);
+  const secondWallet = await getOrCreateWalletTx(tx, secondUserId);
+  const fromWallet = fromUserId === firstUserId ? firstWallet : secondWallet;
+  const toWallet = toUserId === firstUserId ? firstWallet : secondWallet;
+
+  if (fromWallet.balance < amount) {
+    throw new ConflictError("Insufficient wallet funds");
+  }
+
+  await tx
+    .update(wallets)
+    .set({ balance: fromWallet.balance - amount, updatedAt: new Date() })
+    .where(eq(wallets.id, fromWallet.id));
+  await tx
+    .update(wallets)
+    .set({ balance: toWallet.balance + amount, updatedAt: new Date() })
+    .where(eq(wallets.id, toWallet.id));
+
+  const [txn] = await tx
+    .insert(transactions)
+    .values({
+      type,
+      fromUserId,
+      toUserId,
+      amount,
+      status: "completed",
+      idempotencyKey,
+    })
+    .returning();
+  if (!txn) {
+    throw new Error("Transaction creation did not return a row");
+  }
+  return txn;
+}
+
+function assertMatchingTransaction(
+  transaction: Transaction,
+  expected: {
+    type: "topup" | "transfer" | "settlement";
+    fromUserId?: string;
+    toUserId?: string;
+    amount: number;
+  },
+): void {
+  if (
+    transaction.type !== expected.type ||
+    transaction.fromUserId !== (expected.fromUserId ?? null) ||
+    transaction.toUserId !== (expected.toUserId ?? null) ||
+    transaction.amount !== expected.amount
+  ) {
+    throw new ConflictError(
+      "This idempotency key was already used for a different transaction",
+    );
+  }
+}
+
+export { findByIdempotencyKey, assertMatchingTransaction };

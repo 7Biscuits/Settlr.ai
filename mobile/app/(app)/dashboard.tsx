@@ -3,11 +3,8 @@ import { RefreshControl, ScrollView, Text, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../../src/auth/AuthContext";
-import { getOverallBalances } from "../../src/api/balances";
-import { getWalletBalance } from "../../src/api/wallet";
-import { listGroups } from "../../src/api/groups";
-import { listTransactions } from "../../src/api/wallet";
-import type { DirectedBalance, Group, Transaction } from "../../src/api/types";
+import { getDashboard } from "../../src/api/dashboard";
+import type { DashboardSummary } from "../../src/api/types";
 import { formatAmount, formatAbsAmount } from "../../src/lib/money";
 import { Card } from "../../src/components/Card";
 import { Button } from "../../src/components/Button";
@@ -18,10 +15,7 @@ export default function DashboardScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
-  const [balances, setBalances] = useState<DirectedBalance[]>([]);
-  const [walletBalance, setWalletBalance] = useState(0);
-  const [groups, setGroups] = useState<Group[]>([]);
-  const [activity, setActivity] = useState<Transaction[]>([]);
+  const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -29,16 +23,7 @@ export default function DashboardScreen() {
   const load = useCallback(async () => {
     setError(null);
     try {
-      const [b, w, g, t] = await Promise.all([
-        getOverallBalances(),
-        getWalletBalance(),
-        listGroups(),
-        listTransactions(),
-      ]);
-      setBalances(b.balances);
-      setWalletBalance(w.balance);
-      setGroups(g.groups);
-      setActivity(t.transactions.slice(0, 5));
+      setSummary(await getDashboard());
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load dashboard");
     } finally {
@@ -52,14 +37,8 @@ export default function DashboardScreen() {
     }, [load]),
   );
 
-  const totalOwed = balances
-    .filter((b) => b.netAmount > 0)
-    .reduce((sum, b) => sum + b.netAmount, 0);
-  const totalOwing = balances
-    .filter((b) => b.netAmount < 0)
-    .reduce((sum, b) => sum + Math.abs(b.netAmount), 0);
-
   if (loading) return <LoadingState label="Loading your dashboard..." />;
+  if (!summary) return <ErrorState message="Dashboard data is unavailable" onRetry={load} />;
 
   return (
     <ScrollView
@@ -94,13 +73,13 @@ export default function DashboardScreen() {
         <Card className="flex-1">
           <Text className="text-sm text-muted">You are owed</Text>
           <Text className="mt-1 text-xl font-bold text-success">
-            {formatAbsAmount(totalOwed)}
+            {formatAbsAmount(summary.totalOwed)}
           </Text>
         </Card>
         <Card className="flex-1">
           <Text className="text-sm text-muted">You owe</Text>
           <Text className="mt-1 text-xl font-bold text-danger">
-            {formatAbsAmount(totalOwing)}
+            {formatAbsAmount(summary.totalOwing)}
           </Text>
         </Card>
       </View>
@@ -110,7 +89,7 @@ export default function DashboardScreen() {
           <View>
             <Text className="text-sm text-muted">Wallet balance</Text>
             <Text className="mt-1 text-2xl font-bold text-text">
-              {formatAmount(walletBalance)}
+              {formatAmount(summary.walletBalance)}
             </Text>
           </View>
           <Button
@@ -143,14 +122,14 @@ export default function DashboardScreen() {
             onPress={() => router.push("/(app)/groups")}
           />
         </View>
-        {groups.length === 0 ? (
+        {summary.groups.length === 0 ? (
           <Card>
             <Text className="text-sm text-muted">
               No groups yet. Create one to start splitting expenses.
             </Text>
           </Card>
         ) : (
-          groups.slice(0, 4).map((g) => (
+          summary.groups.slice(0, 4).map((g) => (
             <Card key={g.id}>
               <Text
                 className="text-base font-medium text-text"
@@ -165,12 +144,12 @@ export default function DashboardScreen() {
 
       <View className="gap-2">
         <Text className="text-lg font-semibold text-text">Recent activity</Text>
-        {activity.length === 0 ? (
+        {summary.recentActivity.length === 0 ? (
           <Card>
             <Text className="text-sm text-muted">No transactions yet.</Text>
           </Card>
         ) : (
-          activity.map((t) => (
+          summary.recentActivity.map((t) => (
             <Card key={t.id}>
               <View className="flex-row items-center justify-between">
                 <Text className="text-base capitalize text-text">{t.type}</Text>

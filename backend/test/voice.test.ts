@@ -5,7 +5,7 @@ import { buildApp } from "../src/app.js";
 /**
  * Voice endpoint tests. These do not touch the database: the transcribe route
  * validates auth and provider configuration before any persistence, so they
- * run without RUN_DB_TESTS. ELEVENLABS_API_KEY is unset in the test env, so the
+ * run without RUN_DB_TESTS. DEEPGRAM_API_KEY is unset in the test env, so the
  * route is expected to report the provider as unconfigured (503) rather than
  * calling out to a real provider.
  */
@@ -51,6 +51,26 @@ describe("voice routes", () => {
       payload: { audioBase64: "AAAA", mimeType: "audio/m4a" },
     });
     // Provider key is absent in the test environment.
+    expect(res.statusCode).toBe(503);
+  });
+
+  it("rejects unauthenticated speech synthesis requests", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/voice/tts",
+      payload: { text: "Hello" },
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it("reports 503 when the TTS provider is not configured", async () => {
+    const token = app.jwt.sign({ id: "00000000-0000-0000-0000-000000000000", email: "t@e.com" });
+    const res = await app.inject({
+      method: "POST",
+      url: "/voice/tts",
+      headers: { authorization: `Bearer ${token}` },
+      payload: { text: "Hello" },
+    });
     expect(res.statusCode).toBe(503);
   });
 });

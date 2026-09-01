@@ -1,12 +1,16 @@
 import "../global.css";
 import React, { useEffect } from "react";
-import { Stack, useRouter, useSegments } from "expo-router";
+import { Stack, usePathname, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { View } from "react-native";
 import { AuthProvider, useAuth } from "../src/auth/AuthContext";
 import { LoadingState } from "../src/components/States";
+import {
+  setPendingInvitationToken,
+  takePendingInvitationToken,
+} from "../src/api/session";
 
 /**
  * Redirects between the (auth) and (app) route groups based on session state.
@@ -16,17 +20,24 @@ import { LoadingState } from "../src/components/States";
 function AuthGate() {
   const { user, initializing } = useAuth();
   const segments = useSegments();
+  const pathname = usePathname();
   const router = useRouter();
 
   useEffect(() => {
     if (initializing) return;
     const inAuthGroup = segments[0] === "(auth)";
+    const inviteToken = pathname.match(/^\/invite\/([^/]+)$/)?.[1];
     if (!user && !inAuthGroup) {
+      if (inviteToken) {
+        void setPendingInvitationToken(inviteToken);
+      }
       router.replace("/(auth)/login");
     } else if (user && inAuthGroup) {
-      router.replace("/(app)/dashboard");
+      void takePendingInvitationToken().then((token) => {
+        router.replace(token ? `/invite/${token}` : "/(app)/dashboard");
+      });
     }
-  }, [user, initializing, segments, router]);
+  }, [user, initializing, pathname, segments, router]);
 
   if (initializing) {
     return (
@@ -37,10 +48,11 @@ function AuthGate() {
   }
 
   return (
-    <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: "#0b0f19" } }}>
-      <Stack.Screen name="(auth)" />
-      <Stack.Screen name="(app)" />
-    </Stack>
+      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: "#0b0f19" } }}>
+        <Stack.Screen name="(auth)" />
+        <Stack.Screen name="(app)" />
+        <Stack.Screen name="invite/[token]" />
+      </Stack>
   );
 }
 

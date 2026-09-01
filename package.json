@@ -4,15 +4,17 @@
   "private": true,
   "description": "PayPilot — AI-powered shared-expense and debt-settlement application",
   "scripts": {
-    "dev": "yarn dev:backend",
-    "dev:backend": "yarn --cwd backend dev",
-    "build:backend": "yarn --cwd backend build",
-    "test:backend": "yarn --cwd backend test",
-    "dev:frontend": "yarn --cwd frontend dev",
-    "build:frontend": "yarn --cwd frontend build",
+    "dev": "npm --prefix backend run dev",
+    "dev:backend": "npm --prefix backend run dev",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "build:backend": "npm --prefix backend run build",
+    "build:frontend": "npm --prefix frontend run build",
+    "test:backend": "npm --prefix backend test",
+    "db:migrate": "npm --prefix backend run db:migrate",
     "db:up": "docker compose up -d db",
     "db:down": "docker compose down"
   },
+
   "engines": {
     "node": ">=20"
   }

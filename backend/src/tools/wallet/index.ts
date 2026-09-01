@@ -15,6 +15,8 @@ export const checkWalletBalanceTool: ToolDefinition = {
   },
 };
 
+import { randomUUID } from "node:crypto";
+
 export const transferWalletFundsTool: ToolDefinition = {
   name: "transfer_wallet_funds",
   description:
@@ -22,20 +24,25 @@ export const transferWalletFundsTool: ToolDefinition = {
   inputSchema: z.object({
     toUserId: z.string().uuid(),
     amount: z.number().int().positive(),
-    idempotencyKey: z.string().min(8).max(128),
+    idempotencyKey: z
+      .string()
+      .min(8)
+      .max(128)
+      .optional()
+      .default(() => randomUUID()),
   }),
   sensitive: true,
   async execute(input, ctx) {
     const { toUserId, amount, idempotencyKey } = input as {
       toUserId: string;
       amount: number;
-      idempotencyKey: string;
+      idempotencyKey?: string;
     };
     const transaction = await transferFunds(
       ctx.userId,
       toUserId,
       amount,
-      idempotencyKey,
+      idempotencyKey || randomUUID(),
     );
     return { success: true, data: { transaction } };
   },
@@ -49,7 +56,12 @@ export const settleDebtTool: ToolDefinition = {
     groupId: z.string().uuid(),
     toUserId: z.string().uuid(),
     amount: z.number().int().positive(),
-    idempotencyKey: z.string().min(8).max(128),
+    idempotencyKey: z
+      .string()
+      .min(8)
+      .max(128)
+      .optional()
+      .default(() => randomUUID()),
   }),
   sensitive: true,
   async execute(input, ctx) {
@@ -57,15 +69,16 @@ export const settleDebtTool: ToolDefinition = {
       groupId: string;
       toUserId: string;
       amount: number;
-      idempotencyKey: string;
+      idempotencyKey?: string;
     };
     const result = await settleDebt({
       groupId,
       fromUserId: ctx.userId,
       toUserId,
       amount,
-      idempotencyKey,
+      idempotencyKey: idempotencyKey || randomUUID(),
     });
     return { success: true, data: result };
   },
 };
+

@@ -136,26 +136,77 @@ export async function confirmAction(
     },
   ];
 
-  // Ask the model to summarize the verified outcome. If that secondary model
-  // request fails, the verified tool result remains the source of truth and
-  // the confirmation can still be persisted as completed.
-  let content: string;
-  try {
-    const result = await chatCompletion(messages, getToolSchemasForLLM());
-    content =
-      result.content ??
-      (toolResult.success
+  // Continue agent loop if the model wants to call further read tools or summarize
+  const tools = getToolSchemasForLLM();
+  for (let step = 0; step < MAX_STEPS; step++) {
+    let result;
+    try {
+      result = await chatCompletion(messages, tools);
+    } catch {
+      const fallbackContent = toolResult.success
         ? "Action completed."
-        : `Action failed: ${toolResult.error}`);
-  } catch {
-    content = toolResult.success
-      ? "Action completed."
-      : `Action failed: ${toolResult.error}`;
+        : `Action failed: ${toolResult.error}`;
+      messages.push({ role: "assistant", content: fallbackContent });
+      return { type: "message", content: fallbackContent, messages };
+    }
+
+    if (result.toolCalls.length === 0) {
+      messages.push({ role: "assistant", content: result.content });
+      return {
+        type: "message",
+        content: result.content ?? (toolResult.success ? "Action completed." : `Action failed: ${toolResult.error}`),
+        messages,
+      };
+    }
+
+    messages.push({
+      role: "assistant",
+      content: result.content,
+      tool_calls: result.toolCalls,
+    });
+
+    for (const call of result.toolCalls) {
+      if (isSensitive(call.function.name)) {
+        let callArgs: unknown = {};
+        try {
+          callArgs = call.function.arguments
+            ? JSON.parse(call.function.arguments)
+            : {};
+        } catch {
+          callArgs = {};
+        }
+        return {
+          type: "confirmation_required",
+          content:
+            result.content ??
+            `I need your confirmation to run ${call.function.name}.`,
+          pendingAction: {
+            tool: call.function.name,
+            arguments: callArgs,
+            toolCallId: call.id,
+          },
+          messages,
+        };
+      }
+
+      const nextToolResult = await executeToolCall(
+        call.function.name,
+        call.function.arguments,
+        ctx,
+      );
+      messages.push({
+        role: "tool",
+        tool_call_id: call.id,
+        name: call.function.name,
+        content: JSON.stringify(nextToolResult),
+      });
+    }
   }
-  messages.push({ role: "assistant", content });
+
   return {
     type: "message",
-    content,
+    content: toolResult.success ? "Action completed." : `Action failed: ${toolResult.error}`,
     messages,
   };
 }
+

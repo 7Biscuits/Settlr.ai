@@ -3,9 +3,12 @@ import { Tabs } from "expo-router";
 import { Text } from "react-native";
 import { useMessageEvents } from "../../src/features/messages/useMessageEvents";
 
-function TabIcon({ label, color }: { label: string; color: string }) {
+import type { ColorValue } from "react-native";
+
+function TabIcon({ label, color }: { label: string; color: string | ColorValue }) {
   return <Text style={{ color, fontSize: 20 }}>{label}</Text>;
 }
+
 
 export default function AppTabsLayout() {
   const { unreadCount } = useMessageEvents();

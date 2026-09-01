@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Audio } from "expo-av";
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
 import { synthesize } from "../../api/voice";
+
 
 /**
  * Fetches Deepgram TTS audio through the backend, writes only a short-lived

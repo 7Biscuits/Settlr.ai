@@ -5,12 +5,11 @@
   "type": "module",
   "main": "dist/server.js",
   "scripts": {
-    "predev": "yarn db:migrate",
     "dev": "tsx watch --env-file=.env src/server.ts",
     "build": "tsc -p tsconfig.json",
-    "prestart": "node --env-file=.env dist/database/migrate.js",
     "start": "node --env-file=.env dist/server.js",
     "test": "vitest run",
+
     "test:watch": "vitest",
     "db:generate": "node --env-file=.env --import tsx ./node_modules/drizzle-kit/bin.cjs generate",
     "db:migrate": "tsx --env-file=.env src/database/migrate.ts",

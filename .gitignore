@@ -29,3 +29,7 @@ coverage/
 
 # Drizzle
 .drizzle/
+
+# Expo
+.expo/
+

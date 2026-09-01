@@ -88,6 +88,8 @@ export default function MessagesIndexScreen() {
 
   if (loading) return <LoadingState label="Loading messages..." />;
 
+  const bottomInset = Math.max(insets.bottom + 24, Platform.OS === "android" ? 56 : 36);
+
   return (
     <View style={styles.safeArea}>
       <ScrollView
@@ -134,7 +136,7 @@ export default function MessagesIndexScreen() {
         </View>
 
         {/* Bottom Content Card */}
-        <View style={styles.bottomCard}>
+        <View style={[styles.bottomCard, { paddingBottom: bottomInset }]}>
           {error ? <Text style={styles.errorBanner}>{error}</Text> : null}
 
           <Text style={styles.sectionTitle}>ALL CHATS</Text>

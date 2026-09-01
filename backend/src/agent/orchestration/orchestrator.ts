@@ -22,7 +22,7 @@ export interface AgentReply {
   messages: ChatMessage[];
 }
 
-const MAX_STEPS = 8;
+const MAX_STEPS = 15;
 
 /**
  * Runs the reason -> tool -> result loop. Read tools execute automatically.
@@ -62,32 +62,15 @@ export async function runAgent(
       tool_calls: result.toolCalls,
     });
 
-    for (const call of result.toolCalls) {
-      if (isSensitive(call.function.name)) {
-        // Halt for confirmation. The pending action is returned to the caller
-        // and NOT executed until the user confirms.
-        let args: unknown = {};
-        try {
-          args = call.function.arguments
-            ? JSON.parse(call.function.arguments)
-            : {};
-        } catch {
-          args = {};
-        }
-        return {
-          type: "confirmation_required",
-          content:
-            result.content ??
-            `I need your confirmation to run ${call.function.name}.`,
-          pendingAction: {
-            tool: call.function.name,
-            arguments: args,
-            toolCallId: call.id,
-          },
-          messages,
-        };
-      }
+    // Two-pass processing: execute ALL non-sensitive (read) tools first so the
+    // agent has complete data, then halt at the first sensitive tool.
+    const sensitiveCall = result.toolCalls.find((c) =>
+      isSensitive(c.function.name),
+    );
 
+    // Pass 1: execute every non-sensitive tool in the batch
+    for (const call of result.toolCalls) {
+      if (isSensitive(call.function.name)) continue;
       const toolResult = await executeToolCall(
         call.function.name,
         call.function.arguments,
@@ -99,6 +82,30 @@ export async function runAgent(
         name: call.function.name,
         content: JSON.stringify(toolResult),
       });
+    }
+
+    // Pass 2: halt at the first sensitive tool for user confirmation
+    if (sensitiveCall) {
+      let args: unknown = {};
+      try {
+        args = sensitiveCall.function.arguments
+          ? JSON.parse(sensitiveCall.function.arguments)
+          : {};
+      } catch {
+        args = {};
+      }
+      return {
+        type: "confirmation_required",
+        content:
+          result.content ??
+          `I need your confirmation to run ${sensitiveCall.function.name}.`,
+        pendingAction: {
+          tool: sensitiveCall.function.name,
+          arguments: args,
+          toolCallId: sensitiveCall.id,
+        },
+        messages,
+      };
     }
   }
 

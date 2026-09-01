@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
@@ -15,15 +15,6 @@ import { Button } from "../../src/components/Button";
 import { ConfirmSheet } from "../../src/components/ConfirmSheet";
 import { useVoiceRecorder } from "../../src/features/ai/useVoiceRecorder";
 import { useVoicePlayer } from "../../src/features/ai/useVoicePlayer";
-import {
-  parseGroupInviteIntent,
-  resolveInviteContacts,
-  type GroupInviteIntent,
-} from "../../src/features/ai/inviteIntent";
-import { ContactChooser } from "../../src/features/ai/ContactChooser";
-import type { DeviceContact } from "../../src/lib/contacts";
-import { buildInviteMessage, sendInviteSms } from "../../src/lib/invites";
-import { useAuth } from "../../src/auth/AuthContext";
 import { ApiError } from "../../src/api/client";
 import { transcribe } from "../../src/api/voice";
 import * as FileSystem from "expo-file-system";
@@ -43,42 +34,32 @@ interface ChatEntry {
   text: string;
 }
 
-interface InvitationDelivery {
-  contact: DeviceContact;
-  groupName: string;
-}
-
-/** Reads the verified invite result returned by the backend tool message. */
-function extractInvitationResult(messages: unknown[]): {
-  kind: "member_added" | "invitation_created" | "invitation_existing";
-  member?: { name: string; email: string };
-  invitation?: { groupName: string; email: string; inviteUrl: string };
-} | null {
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const message = messages[i] as { role?: string; content?: string };
-    if (message.role !== "tool" || !message.content) continue;
-    try {
-      const result = JSON.parse(message.content) as {
-        success?: boolean;
-        data?: {
-          kind?: "member_added" | "invitation_created" | "invitation_existing";
-          member?: { name: string; email: string };
-          invitation?: { groupName: string; email: string; inviteUrl: string };
-        };
-      };
-      if (result.success && result.data?.kind) return result.data as NonNullable<ReturnType<typeof extractInvitationResult>>;
-    } catch {
-      // Ignore unrelated tool results in the assistant conversation.
+/** Formats tool arguments into a human-readable summary for the confirm sheet. */
+function formatActionDetails(tool: string, args: unknown): string {
+  const a = args as Record<string, unknown>;
+  switch (tool) {
+    case "create_group":
+      return `Create group "${a.name}"`;
+    case "invite_to_group":
+      return `Add ${a.query || a.email || a.phone || "member"} to group`;
+    case "create_expense": {
+      const amountRupees = typeof a.amount === "number" ? (a.amount / 100).toFixed(2) : "?";
+      return `₹${amountRupees} for "${a.description}" split ${a.splitType || "equal"}`;
     }
+    case "settle_debt":
+      return `Settle debt of ₹${typeof a.amount === "number" ? (a.amount / 100).toFixed(2) : "?"}`;
+    case "transfer_wallet_funds":
+      return `Transfer ₹${typeof a.amount === "number" ? (a.amount / 100).toFixed(2) : "?"}`;
+    default:
+      return JSON.stringify(args);
   }
-  return null;
 }
 
 export default function AssistantScreen() {
   const insets = useSafeAreaInsets();
-  const { user } = useAuth();
   const voice = useVoiceRecorder();
   const player = useVoicePlayer();
+  const scrollRef = useRef<ScrollView>(null);
 
   const [entries, setEntries] = useState<ChatEntry[]>([]);
   const [input, setInput] = useState("");
@@ -92,45 +73,30 @@ export default function AssistantScreen() {
     speakReply: boolean;
   } | null>(null);
   const [confirming, setConfirming] = useState(false);
-  const [contactMatches, setContactMatches] = useState<DeviceContact[] | null>(null);
-  const [inviteIntent, setInviteIntent] = useState<GroupInviteIntent | null>(null);
-  const [inviteSpeakReply, setInviteSpeakReply] = useState(false);
-  const [pendingDelivery, setPendingDelivery] = useState<InvitationDelivery | null>(null);
+
+  // Auto-scroll to bottom when new entries arrive
+  useEffect(() => {
+    setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
+  }, [entries, loading]);
 
   function pushAssistant(text: string) {
     setEntries((e) => [...e, { role: "assistant", text }]);
   }
 
+  /**
+   * Sends a user message straight to the backend AI agent. ALL intent
+   * recognition, tool calling, and multi-step orchestration happens on the
+   * server. The mobile app is a thin display layer.
+   */
   async function handleSend(text: string, speakReply = false) {
     const trimmed = text.trim();
     if (!trimmed) return;
     setInput("");
     setEntries((e) => [...e, { role: "user", text: trimmed }]);
 
-    const intent = parseGroupInviteIntent(trimmed);
-    if (intent) {
-      await resolveGroupInvite(intent, speakReply);
-      return;
-    }
-
-    await sendToBackend(trimmed, undefined, speakReply);
-  }
-
-  async function sendToBackend(
-    message: string,
-    delivery?: InvitationDelivery,
-    speakReply = false,
-  ) {
     setLoading(true);
     try {
-      const reply = await chat(message, conversation);
-      if (
-        delivery &&
-        reply.type === "confirmation_required" &&
-        reply.pendingAction?.tool === "invite_to_group"
-      ) {
-        setPendingDelivery(delivery);
-      }
+      const reply = await chat(trimmed, conversation);
       await applyReply(reply, speakReply);
     } catch (err) {
       pushAssistant(
@@ -141,48 +107,11 @@ export default function AssistantScreen() {
     }
   }
 
-  async function resolveGroupInvite(intent: GroupInviteIntent, speakReply: boolean) {
-    setInviteIntent(intent);
-    setInviteSpeakReply(speakReply);
-    try {
-      const { matches } = await resolveInviteContacts(intent.contactName);
-      if (matches.length === 0) {
-        pushAssistant(
-          `I couldn't find ${intent.contactName} in your contacts. Choose a contact from the group screen or ask again with their PayPilot email.`,
-        );
-      } else if (matches.length === 1) {
-        await beginInvite(matches[0]!, intent, speakReply);
-      } else {
-        pushAssistant(`Choose which ${intent.contactName} you want to invite.`);
-        setContactMatches(matches);
-      }
-    } catch {
-      pushAssistant("I couldn't access contacts. Check contacts permission and try again.");
-    }
-  }
-
-  async function beginInvite(
-    contact: DeviceContact,
-    intent = inviteIntent,
-    speakReply = inviteSpeakReply,
-  ) {
-    setContactMatches(null);
-    if (!intent) return;
-    const email = contact.emails[0]?.trim();
-    if (!email) {
-      pushAssistant(
-        `${contact.name} has no email saved. Group invitations are email-bound, so add their email to Contacts or use the group screen to enter it.`,
-      );
-      return;
-    }
-    const backendRequest = `Invite ${contact.name} with email ${email} to the ${intent.groupName} group. Use the invite_to_group tool after resolving the group. This requires confirmation.`;
-    await sendToBackend(
-      backendRequest,
-      { contact, groupName: intent.groupName },
-      speakReply,
-    );
-  }
-
+  /**
+   * Processes a reply from the backend. If it's a confirmation request, shows
+   * the ConfirmSheet. If it's a final message, displays it. Handles chained
+   * confirmations automatically — the feedback loop.
+   */
   async function applyReply(reply: AgentReply, speakReply = false) {
     setConversation(reply.messages);
     if (reply.type === "confirmation_required" && reply.pendingAction) {
@@ -200,6 +129,12 @@ export default function AssistantScreen() {
     }
   }
 
+  /**
+   * Confirms a pending sensitive action. After the backend executes it and
+   * returns the result, applyReply is called again — if the agent has more
+   * actions to propose (e.g. next step in a compound command), the next
+   * ConfirmSheet appears automatically. This is the feedback loop.
+   */
   async function handleConfirm() {
     if (!pending) return;
     setConfirming(true);
@@ -207,38 +142,11 @@ export default function AssistantScreen() {
       const speakReply = pending.speakReply;
       const reply = await confirm(pending.action.proposalId);
       setPending(null);
+      // applyReply will show the next ConfirmSheet if the agent wants to
+      // continue with more actions (chained confirmations / feedback loop)
       await applyReply(reply, speakReply);
-      const invite = extractInvitationResult(reply.messages);
-      if (pendingDelivery && invite) {
-        if (invite.kind === "member_added") {
-          pushAssistant(`${invite.member?.name ?? pendingDelivery.contact.name} is now a member of the group.`);
-        } else if (invite.invitation) {
-          if (pendingDelivery.contact.phoneNumbers.length === 0) {
-            pushAssistant(`Invitation created for ${invite.invitation.email}. This contact has no phone number; share this link: ${invite.invitation.inviteUrl}`);
-            setPendingDelivery(null);
-            return;
-          }
-          const outcome = await sendInviteSms(
-            pendingDelivery.contact.phoneNumbers,
-            buildInviteMessage(
-              user?.name ?? "A friend",
-              invite.invitation.groupName,
-              invite.invitation.inviteUrl,
-            ),
-          );
-          if (outcome === "sent") {
-            pushAssistant(`The invitation link was sent to ${pendingDelivery.contact.name}.`);
-          } else if (outcome === "unavailable") {
-            pushAssistant(`Invitation created for ${invite.invitation.email}. This device cannot send SMS; share this link: ${invite.invitation.inviteUrl}`);
-          } else {
-            pushAssistant(`Invitation created for ${invite.invitation.email}. Sending was cancelled; share this link: ${invite.invitation.inviteUrl}`);
-          }
-        }
-      }
-      setPendingDelivery(null);
     } catch (err) {
       setPending(null);
-      setPendingDelivery(null);
       pushAssistant(
         err instanceof ApiError ? err.message : "The action could not be completed.",
       );
@@ -251,9 +159,6 @@ export default function AssistantScreen() {
     if (voice.recording) {
       const uri = await voice.stop();
       if (!uri) return;
-      // STT stays a backend concern: we upload the clip and the backend (which
-      // holds the provider key) returns only the transcript. We never call an
-      // LLM/STT provider from the client.
       setLoading(true);
       try {
         const audioBase64 = await (FileSystem as any).readAsStringAsync(uri, {
@@ -290,21 +195,23 @@ export default function AssistantScreen() {
       <View className="border-b border-border p-4">
         <Text className="text-2xl font-bold text-text">Assistant</Text>
         <Text className="text-sm text-muted">
-          Ask about balances or say “Settle everything I owe Rahul.”
+          Try: "Add Alice and Bob to a group and split ₹200 for lunch"
         </Text>
       </View>
 
       <ScrollView
+        ref={scrollRef}
         className="flex-1"
         contentContainerStyle={{ padding: 16, gap: 10 }}
       >
         {entries.length === 0 ? (
           <View className="gap-2">
             {[
-              "How much do I owe Rahul?",
+              "How much do I owe?",
               "Who owes me?",
-              "Settle everything I owe Rahul",
-              "Invite Rahul to the group",
+              "Create a group called Weekend Trip",
+              "Add Alice and Bob to a group and split ₹100 for snacks",
+              "Settle everything I owe",
             ].map((s) => (
               <Pressable
                 key={s}
@@ -368,15 +275,15 @@ export default function AssistantScreen() {
         title="Confirm this action?"
         description={
           pending?.content ??
-          "PayPilot will run this action on the backend once you confirm."
+          "Settlr will run this action on the backend once you confirm."
         }
         rows={
           pending
             ? [
-                { label: "Action", value: pending.action.tool },
+                { label: "Action", value: pending.action.tool.replace(/_/g, " ") },
                 {
                   label: "Details",
-                  value: JSON.stringify(pending.action.arguments),
+                  value: formatActionDetails(pending.action.tool, pending.action.arguments),
                 },
               ]
             : []
@@ -384,19 +291,8 @@ export default function AssistantScreen() {
         confirmLabel="Confirm & execute"
         loading={confirming}
         onConfirm={handleConfirm}
-        onCancel={() => {
-          setPending(null);
-          setPendingDelivery(null);
-        }}
+        onCancel={() => setPending(null)}
       />
-
-      <ContactChooser
-        visible={!!contactMatches}
-        contacts={contactMatches ?? []}
-        onSelect={(contact) => void beginInvite(contact)}
-        onCancel={() => setContactMatches(null)}
-      />
-
     </KeyboardAvoidingView>
   );
 }

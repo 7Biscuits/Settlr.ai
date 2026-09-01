@@ -3,6 +3,7 @@ import {
   Dimensions,
   NativeScrollEvent,
   NativeSyntheticEvent,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -31,7 +32,7 @@ const SLIDES: SlideData[] = [
   {
     id: '1',
     title: 'SPLIT BILLS &\nSETTLE INSTANTLY',
-    subtitle: 'Track shared group expenses seamlessly',
+    subtitle: 'Track shared group expenses seamlessly in ₹',
     illustration: <FlyingMoneyBagSvg />,
   },
   {
@@ -61,7 +62,8 @@ interface OnboardingScreenProps {
 
 export function OnboardingScreen({ onSignUp, onLogin }: OnboardingScreenProps) {
   const insets = useSafeAreaInsets();
-  const topInset = Math.max(insets.top, 44);
+  const topInset = Math.max(insets.top, Platform.OS === 'ios' ? 44 : 24);
+  const bottomInset = Math.max(insets.bottom, Platform.OS === 'android' ? 24 : 12);
 
   const [currentIndex, setCurrentIndex] = useState(0);
   const [containerWidth, setContainerWidth] = useState(SLIDE_WIDTH);
@@ -105,7 +107,7 @@ export function OnboardingScreen({ onSignUp, onLogin }: OnboardingScreenProps) {
   return (
     <View style={styles.safeArea}>
       <View
-        style={styles.container}
+        style={[styles.container, { paddingBottom: bottomInset }]}
         onLayout={(e) => {
           const w = e.nativeEvent.layout.width;
           if (w > 0 && Math.abs(w - containerWidth) > 1) {
@@ -113,7 +115,7 @@ export function OnboardingScreen({ onSignUp, onLogin }: OnboardingScreenProps) {
           }
         }}>
         {/* Top Settlr Logo Pill */}
-        <View style={[styles.logoWrapper, { paddingTop: topInset + 4 }]}>
+        <View style={[styles.logoWrapper, { paddingTop: topInset + 6 }]}>
           <View style={styles.cleoLogoPill}>
             <Text style={styles.cleoLogoText}>SETTLR</Text>
           </View>
@@ -189,7 +191,7 @@ export function OnboardingScreen({ onSignUp, onLogin }: OnboardingScreenProps) {
               styles.signUpButton,
               pressed && styles.buttonPressed,
             ]}>
-            <Text style={styles.signUpButtonText}>Get Started</Text>
+            <Text style={styles.signUpButtonText}>CREATE NEW ACCOUNT</Text>
           </Pressable>
 
           <Pressable
@@ -200,11 +202,6 @@ export function OnboardingScreen({ onSignUp, onLogin }: OnboardingScreenProps) {
             ]}>
             <Text style={styles.loginButtonText}>I already have an account</Text>
           </Pressable>
-        </View>
-
-        {/* iOS Home Indicator Bar */}
-        <View style={styles.homeIndicatorWrapper}>
-          <View style={styles.homeIndicator} />
         </View>
       </View>
     </View>
@@ -220,7 +217,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#FFFFFF',
     justifyContent: 'space-between',
-    paddingBottom: 6,
   },
   logoWrapper: {
     alignItems: 'center',
@@ -259,7 +255,7 @@ const styles = StyleSheet.create({
   },
   slideTitle: {
     color: '#000000',
-    fontSize: 29,
+    fontSize: 28,
     fontWeight: '900',
     textAlign: 'center',
     lineHeight: 33,
@@ -269,7 +265,7 @@ const styles = StyleSheet.create({
   },
   slideSubtitle: {
     color: '#000000',
-    fontSize: 16,
+    fontSize: 15.5,
     fontWeight: '600',
     textAlign: 'center',
     lineHeight: 22,
@@ -285,7 +281,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 28,
-    paddingVertical: 12,
+    paddingVertical: 10,
   },
   arrowButton: {
     width: 44,
@@ -315,12 +311,12 @@ const styles = StyleSheet.create({
   bottomButtonsWrapper: {
     paddingHorizontal: 20,
     gap: 12,
-    marginBottom: 8,
+    marginTop: 6,
   },
   signUpButton: {
     backgroundColor: '#2738F5',
     borderRadius: 14,
-    height: 52,
+    height: 54,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#2738F5',
@@ -332,7 +328,8 @@ const styles = StyleSheet.create({
   signUpButtonText: {
     color: '#FFFFFF',
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: '800',
+    letterSpacing: 0.5,
   },
   loginButton: {
     backgroundColor: '#FFFFFF',
@@ -345,23 +342,11 @@ const styles = StyleSheet.create({
   },
   loginButtonText: {
     color: '#161A36',
-    fontSize: 16,
+    fontSize: 15.5,
     fontWeight: '700',
   },
   buttonPressed: {
     opacity: 0.85,
     transform: [{ scale: 0.98 }],
-  },
-  homeIndicatorWrapper: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingTop: 4,
-    paddingBottom: 4,
-  },
-  homeIndicator: {
-    width: 134,
-    height: 5,
-    borderRadius: 3,
-    backgroundColor: '#000000',
   },
 });

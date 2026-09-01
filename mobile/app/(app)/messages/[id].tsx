@@ -193,7 +193,7 @@ export default function DirectMessageChatScreen() {
         />
 
         {/* Composer Bar */}
-        <View style={styles.composerBar}>
+        <View style={[styles.composerBar, { paddingBottom: Math.max(insets.bottom, Platform.OS === "android" ? 16 : 8) }]}>
           <TextInput
             value={inputText}
             onChangeText={setInputText}

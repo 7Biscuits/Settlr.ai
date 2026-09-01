@@ -67,6 +67,8 @@ export default function NewMessageScreen() {
     }
   }
 
+  const bottomInset = Math.max(insets.bottom + 24, Platform.OS === "android" ? 56 : 36);
+
   return (
     <View style={styles.safeArea}>
       <ScrollView
@@ -85,7 +87,7 @@ export default function NewMessageScreen() {
         </View>
 
         {/* Content Card */}
-        <View style={styles.bottomCard}>
+        <View style={[styles.bottomCard, { paddingBottom: bottomInset }]}>
           <View style={styles.searchCard}>
             <Text style={styles.searchTitle}>FIND USER OR CONTACT</Text>
             <TextInput

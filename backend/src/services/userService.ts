@@ -91,10 +91,10 @@ export async function lookupUserByContact(
     const normalizedPhone = normalizePhone(q);
     const normalizedEmail = q.toLowerCase();
 
-    // Check exact phone, exact email, or name match
+    // Check exact phone, exact email, or fuzzy name match (partial/substring)
     const conditions = [
       eq(users.email, normalizedEmail),
-      ilike(users.name, q),
+      ilike(users.name, `%${q}%`),
     ];
     if (normalizedPhone) {
       conditions.push(eq(users.phone, normalizedPhone));
@@ -114,17 +114,23 @@ export async function lookupUserByContact(
 export interface ContactMatchUser {
   id: string;
   name: string;
+  email: string;
+  phone: string | null;
   avatarUrl: string | null;
 }
 
 export function toContactMatch(user: {
   id: string;
   name: string;
+  email: string;
+  phone?: string | null;
   avatarUrl?: string | null;
 }): ContactMatchUser {
   return {
     id: user.id,
     name: user.name,
+    email: user.email,
+    phone: user.phone ?? null,
     avatarUrl: user.avatarUrl ?? null,
   };
 }
@@ -172,6 +178,8 @@ export async function bulkLookupContacts(
   const matched: ContactMatchUser[] = rows.map((r) => ({
     id: r.id,
     name: r.name,
+    email: r.email,
+    phone: r.phone ?? null,
     avatarUrl: r.avatarUrl ?? null,
   }));
 

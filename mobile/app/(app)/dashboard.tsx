@@ -12,37 +12,37 @@ import { useRouter } from "expo-router";
 import { useAuth } from "../../src/auth/AuthContext";
 import { getDashboard } from "../../src/api/dashboard";
 import { getHealthStatus } from "../../src/api/health";
-import { BorrowScreen } from "../../src/components/settlr/BorrowScreen";
+import { listConversations } from "../../src/api/messages";
 import { BottomTabs, TabKey } from "../../src/components/settlr/BottomTabs";
 import { BudgetScreen } from "../../src/components/settlr/BudgetScreen";
 import { ChatScreen } from "../../src/components/settlr/ChatScreen";
-import { HabitsScreen } from "../../src/components/settlr/HabitsScreen";
-import { SaveScreen } from "../../src/components/settlr/SaveScreen";
 import { SettingsModal } from "../../src/components/settlr/settings/SettingsModal";
 import { SpendScreen } from "../../src/components/settlr/SpendScreen";
 import { UserLookupModal } from "../../src/components/UserLookupModal";
+import MessagesIndexScreen from "./messages/index";
+import WalletScreen from "./wallet";
 import type { DashboardSummary, HealthStatus } from "../../src/api/types";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const INITIAL_WIDTH = SCREEN_WIDTH > 500 ? 440 : SCREEN_WIDTH;
 
 const TAB_KEYS: TabKey[] = [
-  "spend",
-  "budget",
-  "chat",
-  "save",
-  "borrow",
-  "habits",
+  "home",
+  "groups",
+  "assistant",
+  "messages",
+  "wallet",
 ];
 
 export default function DashboardScreen() {
   const { user, signOut } = useAuth();
   const router = useRouter();
 
-  const [activeTab, setActiveTab] = useState<TabKey>("spend");
+  const [activeTab, setActiveTab] = useState<TabKey>("home");
   const [containerWidth, setContainerWidth] = useState(INITIAL_WIDTH);
   const [showSettings, setShowSettings] = useState(false);
   const [showLookupModal, setShowLookupModal] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   // Backend Data
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
@@ -50,14 +50,19 @@ export default function DashboardScreen() {
 
   const loadData = useCallback(async () => {
     try {
-      const [dash, h] = await Promise.all([
+      const [dash, h, msgs] = await Promise.all([
         getDashboard().catch(() => null),
         getHealthStatus().catch(() => ({ status: "degraded", database: "offline", timestamp: "" })),
+        listConversations().catch(() => null),
       ]);
       if (dash) setSummary(dash);
       if (h) setHealth(h);
+      if (msgs) {
+        const totalUnread = msgs.conversations.reduce((acc, c) => acc + (c.unreadCount || 0), 0);
+        setUnreadCount(totalUnread);
+      }
     } catch {
-      // Graceful fallback to default values
+      // Graceful fallback
     }
   }, []);
 
@@ -85,16 +90,13 @@ export default function DashboardScreen() {
       containerWidth > 0 ? -translateX.value / containerWidth : activeIndex;
     const bg = interpolateColor(
       progress,
-      [0, 1, 1.8, 2, 2.2, 3, 4, 5],
+      [0, 1, 2, 3, 4],
       [
-        "#151C8A", // 0: spend
-        "#151C8A", // 1: budget
-        "#EDF4FF", // near chat
-        "#EDF4FF", // 2: chat
-        "#EDF4FF", // near chat
-        "#151C8A", // 3: save
-        "#151C8A", // 4: borrow
-        "#151C8A", // 5: habits
+        "#151C8A", // 0: home
+        "#151C8A", // 1: groups
+        "#EDF4FF", // 2: assistant
+        "#151C8A", // 3: messages
+        "#151C8A", // 4: wallet
       ]
     );
     return {
@@ -102,7 +104,7 @@ export default function DashboardScreen() {
     };
   });
 
-  const isLightStatusBar = activeTab !== "chat";
+  const isLightStatusBar = activeTab !== "assistant";
   const openSettings = () => setShowSettings(true);
 
   return (
@@ -117,7 +119,7 @@ export default function DashboardScreen() {
             setContainerWidth(w);
           }
         }}>
-        {/* Sliding Viewport */}
+        {/* Sliding Viewport with 5 Relevant Settlr Tabs */}
         <View style={styles.viewportContainer}>
           <Animated.View
             style={[
@@ -125,30 +127,33 @@ export default function DashboardScreen() {
               { width: containerWidth * TAB_KEYS.length },
               animatedTrackStyle,
             ]}>
-            {/* 1. Spend Screen */}
+            {/* 1. Home Dashboard Screen */}
             <View style={{ width: containerWidth, height: "100%" }}>
               <SpendScreen
                 onOpenSettings={openSettings}
-                onOpenTopUp={() => router.push("/(app)/wallet")}
-                balance={summary?.walletBalance ?? 1274.87}
+                onOpenTopUp={() => setActiveTab("wallet")}
+                balance={summary?.walletBalance ?? 127487}
+                totalOwed={summary?.totalOwed ?? 32600}
+                totalOwing={summary?.totalOwing ?? 18800}
+                recentActivity={summary?.recentActivity}
               />
             </View>
 
-            {/* 2. Groups & Budget Screen */}
+            {/* 2. Groups & Split Screen */}
             <View style={{ width: containerWidth, height: "100%" }}>
               <BudgetScreen
                 onOpenSettings={openSettings}
                 onCreateGroup={() => router.push("/(app)/groups")}
-                onSettleDebt={() => router.push("/(app)/wallet")}
+                onSettleDebt={() => setActiveTab("wallet")}
                 netBalance={
-                  (summary?.totalOwed ?? 326) - (summary?.totalOwing ?? 188) + 1000
+                  (summary?.totalOwed ?? 32600) - (summary?.totalOwing ?? 18800)
                 }
-                totalOwed={summary?.totalOwed ?? 326}
-                totalOwing={summary?.totalOwing ?? 188}
+                totalOwed={(summary?.totalOwed ?? 32600) / 100}
+                totalOwing={(summary?.totalOwing ?? 18800) / 100}
               />
             </View>
 
-            {/* 3. Settlr AI Assistant Chat Screen */}
+            {/* 3. Settlr AI Assistant */}
             <View style={{ width: containerWidth, height: "100%" }}>
               <ChatScreen
                 onOpenSettings={openSettings}
@@ -156,39 +161,27 @@ export default function DashboardScreen() {
               />
             </View>
 
-            {/* 4. Vault & Save Screen */}
+            {/* 4. Direct Messages & Contact Chats */}
             <View style={{ width: containerWidth, height: "100%" }}>
-              <SaveScreen
-                onOpenSettings={openSettings}
-                onTopUp={() => router.push("/(app)/wallet")}
-                savedAmount={summary?.walletBalance ?? 1420.50}
-                targetAmount={2000.00}
-              />
+              <MessagesIndexScreen />
             </View>
 
-            {/* 5. Direct Transfers & Borrow Screen */}
+            {/* 5. Wallet & P2P Settlements */}
             <View style={{ width: containerWidth, height: "100%" }}>
-              <BorrowScreen
-                onOpenSettings={openSettings}
-                onSendTransfer={() => setShowLookupModal(true)}
-              />
-            </View>
-
-            {/* 6. Habits & Splits Screen */}
-            <View style={{ width: containerWidth, height: "100%" }}>
-              <HabitsScreen
-                onOpenSettings={openSettings}
-                onAddExpense={() => router.push("/(app)/groups")}
-              />
+              <WalletScreen />
             </View>
           </Animated.View>
         </View>
 
-        {/* Global Bottom Tab Bar */}
-        <BottomTabs activeTab={activeTab} onTabChange={setActiveTab} />
+        {/* 5-Tab Settlr Animated Bottom Bar */}
+        <BottomTabs
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
+          unreadMessagesCount={unreadCount}
+        />
       </Animated.View>
 
-      {/* Global Settings Modal */}
+      {/* Global Settings & Profile Modal */}
       <SettingsModal
         visible={showSettings}
         onClose={() => setShowSettings(false)}

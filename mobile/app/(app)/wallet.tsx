@@ -268,6 +268,8 @@ export default function WalletScreen() {
       ]
     : [];
 
+  const bottomInset = Math.max(insets.bottom + 24, Platform.OS === "android" ? 56 : 36);
+
   return (
     <View style={styles.safeArea}>
       <ScrollView
@@ -336,7 +338,7 @@ export default function WalletScreen() {
         </View>
 
         {/* Bottom Card Content */}
-        <View style={styles.bottomCard}>
+        <View style={[styles.bottomCard, { paddingBottom: bottomInset }]}>
           {/* Active Flow Box */}
           {flow ? (
             <View style={styles.flowCard}>

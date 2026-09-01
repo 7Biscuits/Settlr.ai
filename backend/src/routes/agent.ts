@@ -11,14 +11,22 @@ import {
 } from "../services/agentProposalService.js";
 import { createRateLimiter } from "../middleware/rateLimit.js";
 
-const userMessageHistorySchema = z.object({
-  role: z.literal("user"),
-  content: z.string().trim().min(1).max(4_000),
+/**
+ * Accepts the full conversation history (system, user, assistant, tool messages)
+ * so the agent can maintain context across turns and chain multi-step tool calls.
+ * Previously this only accepted role:"user" which silently dropped all context.
+ */
+const chatMessageSchema = z.object({
+  role: z.enum(["system", "user", "assistant", "tool"]),
+  content: z.union([z.string(), z.null()]).optional(),
+  tool_calls: z.array(z.any()).optional(),
+  tool_call_id: z.string().optional(),
+  name: z.string().optional(),
 });
 
 const chatSchema = z.object({
   message: z.string().trim().min(1).max(4_000),
-  messages: z.array(userMessageHistorySchema).max(30).optional(),
+  messages: z.array(chatMessageSchema).max(60).optional(),
 });
 
 const confirmSchema = z.object({

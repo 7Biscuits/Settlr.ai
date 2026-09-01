@@ -65,6 +65,8 @@ export default function GroupsScreen() {
 
   if (loading) return <LoadingState label="Loading groups..." />;
 
+  const bottomInset = Math.max(insets.bottom + 24, Platform.OS === "android" ? 56 : 36);
+
   return (
     <View style={styles.safeArea}>
       <ScrollView
@@ -104,7 +106,7 @@ export default function GroupsScreen() {
         </View>
 
         {/* Bottom Content Card */}
-        <View style={styles.bottomCard}>
+        <View style={[styles.bottomCard, { paddingBottom: bottomInset }]}>
           {error ? <Text style={styles.errorBanner}>{error}</Text> : null}
 
           {/* New Group Input Box */}

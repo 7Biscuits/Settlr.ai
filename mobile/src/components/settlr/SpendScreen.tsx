@@ -16,80 +16,51 @@ import {
   MoneyBagIcon,
   SkullSparkleIcon,
 } from './illustrations/TransactionIcons';
+import { formatAmount } from '../../lib/money';
 
-interface TransactionItem {
+interface ActivityItem {
   id: string;
-  title: string;
-  amount: string;
-  isPositive: boolean;
-  icon: React.ReactNode;
+  type: string;
+  amount: number;
 }
-
-const DEFAULT_TRANSACTIONS: TransactionItem[] = [
-  {
-    id: '1',
-    title: 'Group Dinner Split • Goa Trip',
-    amount: '+$40.33',
-    isPositive: true,
-    icon: <MoneyBagIcon />,
-  },
-  {
-    id: '2',
-    title: 'Wallet Top Up • Instant Bank',
-    amount: '+$150.00',
-    isPositive: true,
-    icon: <BankBuildingIcon />,
-  },
-  {
-    id: '3',
-    title: 'Settle Debt to Rahul',
-    amount: '$169.50',
-    isPositive: false,
-    icon: <SkullSparkleIcon />,
-  },
-  {
-    id: '4',
-    title: 'Whole Foods Split • Flatmates',
-    amount: '$64.20',
-    isPositive: false,
-    icon: <MoneyBagIcon />,
-  },
-  {
-    id: '5',
-    title: 'Netflix Subscription Split',
-    amount: '$15.99',
-    isPositive: false,
-    icon: <SkullSparkleIcon />,
-  },
-  {
-    id: '6',
-    title: 'Uber Ride Split • Airport',
-    amount: '+$24.50',
-    isPositive: true,
-    icon: <BankBuildingIcon />,
-  },
-];
 
 interface SpendScreenProps {
   onOpenSettings?: () => void;
   onOpenTopUp?: () => void;
+  onOpenScan?: () => void;
+  onOpenAssistant?: () => void;
   balance?: number;
-  transactions?: TransactionItem[];
+  totalOwed?: number;
+  totalOwing?: number;
+  recentActivity?: ActivityItem[];
 }
 
 export function SpendScreen({
   onOpenSettings,
   onOpenTopUp,
-  balance = 1274.87,
-  transactions = DEFAULT_TRANSACTIONS,
+  onOpenScan,
+  onOpenAssistant,
+  balance = 127487, // minor units or major
+  totalOwed = 32600,
+  totalOwing = 18800,
+  recentActivity = [],
 }: SpendScreenProps) {
   const insets = useSafeAreaInsets();
   const topInset = Math.max(insets.top, Platform.OS === 'ios' ? 44 : 24);
   const [expanded, setExpanded] = useState(false);
 
-  const displayedTransactions = expanded
-    ? transactions
-    : transactions.slice(0, 3);
+  // Normalize balance to major units for planet card if in minor units
+  const majorBalance = balance > 10000 ? balance / 100 : balance;
+
+  const defaultActivities = [
+    { id: '1', type: 'Dinner split • Goa Trip', amount: 45000 },
+    { id: '2', type: 'Wallet Top Up', amount: 150000 },
+    { id: '3', type: 'Settled to Rahul', amount: -6800 },
+    { id: '4', type: 'Swiggy Munchies split', amount: -32000 },
+  ];
+
+  const activities = recentActivity.length > 0 ? recentActivity : defaultActivities;
+  const displayedActivities = expanded ? activities : activities.slice(0, 3);
 
   return (
     <View style={styles.safeArea}>
@@ -100,7 +71,7 @@ export function SpendScreen({
         {/* Top Section with Cards */}
         <View style={[styles.topSection, { paddingTop: topInset + 8 }]}>
           <SettlrPlanetCardCarousel
-            balance={balance}
+            balance={majorBalance}
             onTopUp={onOpenTopUp}
             onConnect={onOpenSettings}
           />
@@ -124,8 +95,20 @@ export function SpendScreen({
                 style={styles.actionCircleButton}>
                 <Ionicons name="settings-outline" size={24} color="#0F172A" />
               </Pressable>
-              <Text style={styles.actionLabel}>Manage{'\n'}wallets</Text>
+              <Text style={styles.actionLabel}>Profile &{'\n'}settings</Text>
             </View>
+          </View>
+        </View>
+
+        {/* Quick Debt Snapshot Row */}
+        <View style={styles.snapshotRow}>
+          <View style={styles.snapshotCard}>
+            <Text style={styles.snapshotLabel}>You are owed</Text>
+            <Text style={styles.snapshotOwed}>{formatAmount(totalOwed)}</Text>
+          </View>
+          <View style={styles.snapshotCard}>
+            <Text style={styles.snapshotLabel}>You owe</Text>
+            <Text style={styles.snapshotOwing}>{formatAmount(totalOwing)}</Text>
           </View>
         </View>
 
@@ -133,48 +116,59 @@ export function SpendScreen({
         <View style={styles.transactionsCard}>
           {/* Header Row */}
           <View style={styles.transactionsHeader}>
-            <Text style={styles.transactionsTitle}>RECENT ACTIVITY</Text>
+            <Text style={styles.transactionsTitle}>RECENT SETTLR ACTIVITY</Text>
             <Pressable
               onPress={() => setExpanded((prev) => !prev)}
               style={styles.editButton}>
-              <Feather name={expanded ? "minimize-2" : "edit-2"} size={17} color="#0F172A" />
+              <Feather name={expanded ? "minimize-2" : "maximize-2"} size={17} color="#0F172A" />
             </Pressable>
           </View>
 
           {/* Transaction List */}
           <View style={styles.transactionList}>
-            {displayedTransactions.map((item) => (
-              <View key={item.id} style={styles.transactionRow}>
-                {/* Left Icon & Name */}
-                <View style={styles.transactionLeft}>
-                  {item.icon}
-                  <Text style={styles.transactionName} numberOfLines={1}>
-                    {item.title}
-                  </Text>
-                </View>
+            {displayedActivities.map((item) => {
+              const isPositive = item.amount > 0;
+              return (
+                <View key={item.id} style={styles.transactionRow}>
+                  {/* Left Icon & Name */}
+                  <View style={styles.transactionLeft}>
+                    {item.type.toLowerCase().includes('top') ? (
+                      <BankBuildingIcon />
+                    ) : item.type.toLowerCase().includes('settl') ? (
+                      <SkullSparkleIcon />
+                    ) : (
+                      <MoneyBagIcon />
+                    )}
+                    <Text style={styles.transactionName} numberOfLines={1}>
+                      {item.type}
+                    </Text>
+                  </View>
 
-                {/* Right Amount */}
-                <View style={styles.amountContainer}>
-                  <Text
-                    style={[
-                      styles.transactionAmount,
-                      item.isPositive ? styles.positiveAmount : styles.neutralAmount,
-                    ]}>
-                    {item.amount}
-                  </Text>
+                  {/* Right Amount */}
+                  <View style={styles.amountContainer}>
+                    <Text
+                      style={[
+                        styles.transactionAmount,
+                        isPositive ? styles.positiveAmount : styles.neutralAmount,
+                      ]}>
+                      {formatAmount(item.amount)}
+                    </Text>
+                  </View>
                 </View>
-              </View>
-            ))}
+              );
+            })}
           </View>
 
           {/* View More Link */}
-          <Pressable
-            onPress={() => setExpanded((prev) => !prev)}
-            style={styles.viewMoreButton}>
-            <Text style={styles.viewMoreText}>
-              {expanded ? 'Show less' : 'View more'}
-            </Text>
-          </Pressable>
+          {activities.length > 3 && (
+            <Pressable
+              onPress={() => setExpanded((prev) => !prev)}
+              style={styles.viewMoreButton}>
+              <Text style={styles.viewMoreText}>
+                {expanded ? 'Show less' : 'View more activity'}
+              </Text>
+            </Pressable>
+          )}
         </View>
       </ScrollView>
     </View>
@@ -192,13 +186,13 @@ const styles = StyleSheet.create({
   },
   topSection: {
     backgroundColor: '#F3F6FB',
-    paddingBottom: 16,
+    paddingBottom: 12,
   },
   actionButtonsRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 20,
+    marginTop: 18,
     gap: 48,
   },
   actionButtonContainer: {
@@ -225,12 +219,47 @@ const styles = StyleSheet.create({
     marginTop: 8,
     lineHeight: 16,
   },
+  snapshotRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginHorizontal: 16,
+    marginTop: 12,
+    marginBottom: 4,
+  },
+  snapshotCard: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 16,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  snapshotLabel: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: '#64748B',
+  },
+  snapshotOwed: {
+    fontSize: 22,
+    fontWeight: '900',
+    color: '#059669',
+    marginTop: 4,
+  },
+  snapshotOwing: {
+    fontSize: 22,
+    fontWeight: '900',
+    color: '#DC2626',
+    marginTop: 4,
+  },
   transactionsCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 28,
     marginHorizontal: 16,
-    marginTop: 10,
-    marginBottom: 24,
+    marginTop: 12,
+    marginBottom: 28,
     paddingHorizontal: 20,
     paddingTop: 22,
     paddingBottom: 20,
@@ -248,7 +277,7 @@ const styles = StyleSheet.create({
   },
   transactionsTitle: {
     color: '#0F172A',
-    fontSize: 19,
+    fontSize: 17,
     fontWeight: '900',
     letterSpacing: 0.5,
     textTransform: 'uppercase',
@@ -262,7 +291,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   transactionList: {
-    gap: 18,
+    gap: 16,
   },
   transactionRow: {
     flexDirection: 'row',
@@ -278,7 +307,7 @@ const styles = StyleSheet.create({
   },
   transactionName: {
     color: '#0F172A',
-    fontSize: 16,
+    fontSize: 15.5,
     fontWeight: '700',
     letterSpacing: -0.2,
     flex: 1,
@@ -288,7 +317,7 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   transactionAmount: {
-    fontSize: 17,
+    fontSize: 16.5,
     fontWeight: '800',
     letterSpacing: -0.3,
   },
@@ -301,12 +330,12 @@ const styles = StyleSheet.create({
   viewMoreButton: {
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 22,
+    marginTop: 20,
     paddingVertical: 6,
   },
   viewMoreText: {
     color: '#1E293B',
-    fontSize: 15.5,
+    fontSize: 15,
     fontWeight: '700',
   },
 });

@@ -66,26 +66,29 @@ export const deleteGroupTool: ToolDefinition = {
 
 export const addFriendTool: ToolDefinition = {
   name: "invite_to_group",
-  description: "Add or invite a user to a group by their email address or registered phone number.",
+  description: "Add or invite a user to a group. You can provide their email, phone number, or just their name (query). When using query (name), the tool looks up the user and adds them directly if found. If providing email for an unregistered user, it creates an invitation link.",
   inputSchema: z
     .object({
       groupId: z.string().uuid(),
       email: z.string().email().optional(),
       phone: z.string().min(3).max(32).optional(),
+      query: z.string().min(1).max(120).optional(),
     })
-    .refine((data) => Boolean(data.email || data.phone), {
-      message: "Either email or phone must be provided to add or invite a member",
+    .refine((data) => Boolean(data.email || data.phone || data.query), {
+      message: "Either email, phone, or query (name) must be provided to add or invite a member",
     }),
   sensitive: true,
   async execute(input, ctx) {
-    const { groupId, email, phone } = input as {
+    const { groupId, email, phone, query } = input as {
       groupId: string;
       email?: string;
       phone?: string;
+      query?: string;
     };
     const result = await inviteOrAddMemberByContact(groupId, ctx.userId, {
       email,
       phone,
+      query,
     });
     return { success: true, data: result };
   },

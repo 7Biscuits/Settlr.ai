@@ -31,7 +31,7 @@ export function SignUpSuccessScreen({ onNext }: SignUpSuccessScreenProps) {
         {/* Bottom CTA Action Button */}
         <Animated.View
           entering={FadeIn.delay(200).duration(300)}
-          style={styles.bottomBar}>
+          style={[styles.bottomBar, { paddingBottom: Math.max(16, 24) }]}>
           <Pressable
             onPress={onNext}
             style={({ pressed }) => [
@@ -40,11 +40,6 @@ export function SignUpSuccessScreen({ onNext }: SignUpSuccessScreenProps) {
             ]}>
             <Text style={styles.nextButtonText}>Enter Dashboard 👉</Text>
           </Pressable>
-
-          {/* iOS Home Indicator */}
-          <View style={styles.homeIndicatorWrapper}>
-            <View style={styles.homeIndicator} />
-          </View>
         </Animated.View>
       </View>
     </SafeAreaView>

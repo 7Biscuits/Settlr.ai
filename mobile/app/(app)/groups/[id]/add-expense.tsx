@@ -198,6 +198,8 @@ export default function AddExpenseScreen() {
 
   if (loading) return <LoadingState label="Loading group..." />;
 
+  const bottomInset = Math.max(insets.bottom + 24, Platform.OS === "android" ? 56 : 36);
+
   return (
     <View style={styles.safeArea}>
       <ScrollView
@@ -216,7 +218,7 @@ export default function AddExpenseScreen() {
         </View>
 
         {/* Content Body */}
-        <View style={styles.bottomCard}>
+        <View style={[styles.bottomCard, { paddingBottom: bottomInset }]}>
           {/* Main Inputs Card */}
           <View style={styles.inputCard}>
             <Text style={styles.cardHeader}>EXPENSE DETAILS</Text>
@@ -233,7 +235,7 @@ export default function AddExpenseScreen() {
             </View>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>Total Amount ($)</Text>
+              <Text style={styles.label}>Total Amount (₹)</Text>
               <TextInput
                 value={amountText}
                 onChangeText={setAmountText}

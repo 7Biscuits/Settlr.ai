@@ -98,6 +98,8 @@ export default function ProfileScreen() {
     return (n[0] || "U").toUpperCase();
   };
 
+  const bottomInset = Math.max(insets.bottom + 24, Platform.OS === "android" ? 56 : 36);
+
   return (
     <View style={styles.safeArea}>
       <ScrollView

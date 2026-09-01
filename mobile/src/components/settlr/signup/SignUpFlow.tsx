@@ -355,7 +355,7 @@ export function SignUpFlow({
           </ScrollView>
 
           {/* Bottom Action Button */}
-          <View style={styles.bottomBar}>
+          <View style={[styles.bottomBar, { paddingBottom: Math.max(insets.bottom, Platform.OS === 'android' ? 24 : 12) }]}>
             <Pressable
               onPress={isStepValid() && !loading ? handleNext : undefined}
               style={[
@@ -376,11 +376,6 @@ export function SignUpFlow({
                 </Text>
               )}
             </Pressable>
-
-            {/* iOS Home Indicator Bar */}
-            <View style={styles.homeIndicatorWrapper}>
-              <View style={styles.homeIndicator} />
-            </View>
           </View>
         </View>
 

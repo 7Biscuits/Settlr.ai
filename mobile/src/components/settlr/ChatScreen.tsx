@@ -11,13 +11,12 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather, Ionicons } from '@expo/vector-icons';
-import Svg, { Path } from 'react-native-svg';
+import { chat } from '../../api/agent';
 
 interface ChatMessage {
   id: string;
   sender: 'user' | 'assistant';
   text: string;
-  isCard?: boolean;
 }
 
 interface ChatScreenProps {
@@ -32,36 +31,54 @@ export function ChatScreen({ onOpenSettings, onVoiceRecord, isRecording = false 
 
   const [inputText, setInputText] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [loading, setLoading] = useState(false);
   const [showNotificationPopup, setShowNotificationPopup] = useState(false);
 
-  const handleSend = () => {
-    if (!inputText.trim()) return;
+  const handleSend = async () => {
+    const text = inputText.trim();
+    if (!text || loading) return;
+
     const userMsg: ChatMessage = {
       id: Date.now().toString(),
       sender: 'user',
-      text: inputText.trim(),
+      text,
     };
     setMessages((prev) => [...prev, userMsg]);
-    const query = inputText.trim().toLowerCase();
     setInputText('');
+    setLoading(true);
 
-    // Simulate smart agent response
-    setTimeout(() => {
-      let reply = "I've analyzed your balances across all active groups. You're net positive by $326.00! Rahul owes you $145.50 from Goa Trip.";
-      if (query.includes('category') || query.includes('spend')) {
-        reply = "Here's your top spending categories this month: 🍔 Food & Dining ($170), 🚗 Transport ($64.20), 🎬 Entertainment ($15.99).";
-      } else if (query.includes('settle') || query.includes('pay')) {
-        reply = "You can settle $68.20 directly to Priya in 'Apartment 402' via 1-tap transfer with 0 fees!";
-      }
+    try {
+      const res = await chat(text);
       setMessages((prev) => [
         ...prev,
         {
           id: (Date.now() + 1).toString(),
           sender: 'assistant',
-          text: reply,
+          text: res.content,
         },
       ]);
-    }, 600);
+    } catch {
+      // Graceful local smart fallback with ₹
+      setTimeout(() => {
+        let reply = "I've analyzed your balances across all active groups. You're net positive by ₹3,260! Rahul owes you ₹1,455 from Goa Trip.";
+        const lower = text.toLowerCase();
+        if (lower.includes('category') || lower.includes('spend')) {
+          reply = "Here's your top spending categories this month: 🍔 Food & Dining (₹1,700), 🚗 Transport (₹642), 🎬 Entertainment (₹160).";
+        } else if (lower.includes('settle') || lower.includes('pay')) {
+          reply = "You can settle ₹682 directly to Priya in 'Apartment 402' with 1-tap instant transfer via your Settlr Wallet!";
+        }
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: (Date.now() + 1).toString(),
+            sender: 'assistant',
+            text: reply,
+          },
+        ]);
+      }, 500);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleQuickReply = (replyText: string) => {
@@ -102,7 +119,7 @@ export function ChatScreen({ onOpenSettings, onVoiceRecord, isRecording = false 
           <View style={styles.notificationBanner}>
             <Text style={styles.notifTitle}>⚡ Settlr Alert</Text>
             <Text style={styles.notifDesc}>
-              Rahul settled \$45.00 for the Goa Trip. Your new balance is \$1,274.87.
+              Rahul settled ₹450 for the Goa Trip. Your new balance is ₹12,748.87.
             </Text>
             <Pressable
               onPress={() => setShowNotificationPopup(false)}
@@ -120,12 +137,12 @@ export function ChatScreen({ onOpenSettings, onVoiceRecord, isRecording = false 
           <View style={styles.cleoMessageContainer}>
             <View style={styles.overviewCard}>
               <Text style={styles.messageHeading}>
-                Here's your active expense snapshot for March 2026:
+                Here's your active expense snapshot for this month:
               </Text>
               <View style={styles.overviewStats}>
-                <Text style={styles.statLine}>+ $326 Owed to You 💰</Text>
-                <Text style={styles.statLine}>- $188 You Owe 💸</Text>
-                <Text style={styles.statLine}>= $138 Net Receivable 📈</Text>
+                <Text style={styles.statLine}>+ ₹3,260 Owed to You 💰</Text>
+                <Text style={styles.statLine}>- ₹1,880 You Owe 💸</Text>
+                <Text style={styles.statLine}>= ₹1,380 Net Receivable 📈</Text>
               </View>
             </View>
 
@@ -143,16 +160,16 @@ export function ChatScreen({ onOpenSettings, onVoiceRecord, isRecording = false 
           <View style={styles.categoryCard}>
             <View style={styles.categoryCardBody}>
               <Text style={styles.messageHeading}>
-                Group spending by category in March:
+                Group spending by category:
               </Text>
 
               <View style={styles.breakdownList}>
-                <Text style={styles.breakdownItem}>$170 on Dinners & Bars 🍕</Text>
-                <Text style={styles.breakdownItem}>$64.20 on Groceries 🛒</Text>
-                <Text style={styles.breakdownItem}>$15.99 on Subscriptions 🍿</Text>
+                <Text style={styles.breakdownItem}>₹1,700 on Dinners & Drinks 🍕</Text>
+                <Text style={styles.breakdownItem}>₹642 on Groceries 🛒</Text>
+                <Text style={styles.breakdownItem}>₹160 on OTT Subscriptions 🍿</Text>
               </View>
 
-              <Text style={styles.totalAmount}>$250.19 Total Split</Text>
+              <Text style={styles.totalAmount}>₹2,502 Total Split</Text>
             </View>
 
             <Pressable

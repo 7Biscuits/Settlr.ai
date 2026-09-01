@@ -125,7 +125,7 @@ export function SettlrPlanetCardCarousel({
           {/* Center Balance Display */}
           <View style={styles.balanceContainer}>
             <View style={styles.balanceRow}>
-              <Text style={styles.balanceDollar}>${intVal.toLocaleString()}</Text>
+              <Text style={styles.balanceDollar}>₹{intVal.toLocaleString()}</Text>
               <Text style={styles.balanceCents}>{decVal}</Text>
             </View>
             <Text style={styles.balanceLabel}>Available Balance</Text>

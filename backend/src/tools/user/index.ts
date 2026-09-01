@@ -20,7 +20,7 @@ export const getMyProfileTool: ToolDefinition = {
 export const lookupUserByContactTool: ToolDefinition = {
   name: "lookup_user_by_contact",
   description:
-    "Lookup a registered PayPilot user by their phone number, email address, or name to find their user ID for payments, group invites, or balance checks.",
+    "Lookup a registered user by their name (query — supports partial/fuzzy matching), phone number, or email address. Returns their user ID, name, email, and phone. Use the query parameter to search by name — e.g. query='rudransh' will match 'Rudransh Sharma'. Always try name search first before asking the user for contact details.",
   inputSchema: z.object({
     phone: z.string().optional(),
     email: z.string().optional(),

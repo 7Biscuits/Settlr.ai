@@ -71,6 +71,8 @@ export default function ExpenseDetailScreen() {
   if (loading) return <LoadingState label="Loading expense..." />;
   if (!expense) return <Text style={styles.errorText}>Expense not found</Text>;
 
+  const bottomInset = Math.max(insets.bottom + 24, Platform.OS === "android" ? 56 : 36);
+
   return (
     <View style={styles.safeArea}>
       <ScrollView
@@ -122,7 +124,7 @@ export default function ExpenseDetailScreen() {
         </View>
 
         {/* Content Card */}
-        <View style={styles.bottomCard}>
+        <View style={[styles.bottomCard, { paddingBottom: bottomInset }]}>
           {error ? <Text style={styles.errorBanner}>{error}</Text> : null}
 
           {/* Info Card */}

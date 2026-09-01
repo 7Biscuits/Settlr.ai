@@ -128,7 +128,7 @@ export function BudgetScreen({
             {/* Left Metric: Net Group Balance */}
             <View style={styles.statColumn}>
               <View style={styles.amountRow}>
-                <Text style={styles.currencySymbol}>$</Text>
+                <Text style={styles.currencySymbol}>₹</Text>
                 <Text style={styles.statInteger}>{intPart.toLocaleString()}</Text>
                 <Text style={styles.statDecimal}>{decPart}</Text>
               </View>
@@ -162,7 +162,7 @@ export function BudgetScreen({
             {/* Right Metric: Daily Allowance */}
             <View style={styles.statColumn}>
               <View style={styles.amountRow}>
-                <Text style={styles.currencySymbol}>$</Text>
+                <Text style={styles.currencySymbol}>₹</Text>
                 <Text style={styles.statInteger}>115</Text>
                 <Text style={styles.statDecimal}>.90</Text>
               </View>
@@ -175,7 +175,7 @@ export function BudgetScreen({
             <View style={styles.insightBanner}>
               <SettlrMouth />
               <Text style={styles.insightText}>
-                3 friends owe you \$326. Want me to send friendly nudges? 💬
+                3 friends owe you ₹326. Want me to send friendly nudges? 💬
               </Text>
               <Pressable
                 hitSlop={8}
@@ -210,7 +210,7 @@ export function BudgetScreen({
 
                   <View style={styles.debtRight}>
                     <Text style={[styles.debtAmount, item.userOwes ? styles.debtOweAmount : styles.debtOwedAmount]}>
-                      ${item.amount.toFixed(2)}
+                      ₹{item.amount.toFixed(2)}
                     </Text>
                     <Pressable
                       onPress={() => onSettleDebt?.(item)}

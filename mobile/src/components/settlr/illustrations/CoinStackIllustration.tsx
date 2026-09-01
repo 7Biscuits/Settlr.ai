@@ -219,7 +219,7 @@ export function CoinStackIllustration({ inAmount = 326, outAmount = 188 }: CoinS
           </View>
 
           <Text style={styles.categoryLabel}>To Receive</Text>
-          <Text style={styles.amountValue}>${Math.round(inAmount)}</Text>
+          <Text style={styles.amountValue}>₹{Math.round(inAmount)}</Text>
         </View>
 
         {/* Right Column: OUT */}
@@ -268,7 +268,7 @@ export function CoinStackIllustration({ inAmount = 326, outAmount = 188 }: CoinS
           </View>
 
           <Text style={styles.categoryLabel}>To Settle</Text>
-          <Text style={styles.amountValue}>${Math.round(outAmount)}</Text>
+          <Text style={styles.amountValue}>₹{Math.round(outAmount)}</Text>
         </View>
       </View>
     </View>

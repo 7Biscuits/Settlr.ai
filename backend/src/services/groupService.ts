@@ -15,7 +15,7 @@ import {
   ValidationError,
 } from "../utils/errors.js";
 
-import { and, desc, eq, gt, ne } from "drizzle-orm";
+import { and, desc, eq, gt, ilike, ne } from "drizzle-orm";
 
 
 const INVITATION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -276,9 +276,34 @@ export async function inviteOrAddMemberByEmail(
 export async function inviteOrAddMemberByContact(
   groupId: string,
   requesterId: string,
-  contact: { email?: string; phone?: string },
+  contact: { email?: string; phone?: string; query?: string },
 ): Promise<InviteOrAddResult> {
   await assertOwner(groupId, requesterId);
+
+  // Try name-based lookup first (fuzzy matching)
+  if (contact.query) {
+    const q = contact.query.trim();
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(ilike(users.name, `%${q}%`));
+    if (user) {
+      if (await isMember(groupId, user.id)) {
+        throw new ConflictError("User is already a member");
+      }
+      await db.insert(groupMembers).values({ groupId, userId: user.id });
+      return {
+        kind: "member_added",
+        member: { id: user.id, name: user.name, email: user.email },
+      };
+    }
+    // If name lookup fails and no email/phone fallback, report it
+    if (!contact.email && !contact.phone) {
+      throw new ValidationError(
+        `No registered user found matching "${q}". Try providing their email address to send an invitation.`,
+      );
+    }
+  }
 
   if (contact.phone) {
     const normPhone = contact.phone.trim();
@@ -300,7 +325,7 @@ export async function inviteOrAddMemberByContact(
   }
 
   throw new ValidationError(
-    "No registered user found with that phone number. Please provide their email to send an invitation.",
+    "No registered user found with that contact info. Please provide their email to send an invitation.",
   );
 }
 

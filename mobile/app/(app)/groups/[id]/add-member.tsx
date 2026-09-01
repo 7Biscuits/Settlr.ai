@@ -87,6 +87,8 @@ export default function AddMemberScreen() {
     }
   }
 
+  const bottomInset = Math.max(insets.bottom + 24, Platform.OS === "android" ? 56 : 36);
+
   return (
     <View style={styles.safeArea}>
       <ScrollView
@@ -105,7 +107,7 @@ export default function AddMemberScreen() {
         </View>
 
         {/* Content Card */}
-        <View style={styles.bottomCard}>
+        <View style={[styles.bottomCard, { paddingBottom: bottomInset }]}>
           <View style={styles.inputCard}>
             <Text style={styles.cardHeader}>INVITE BY EMAIL</Text>
 

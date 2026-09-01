@@ -204,6 +204,8 @@ export default function EditExpenseScreen() {
 
   if (loading) return <LoadingState label="Loading expense..." />;
 
+  const bottomInset = Math.max(insets.bottom + 24, Platform.OS === "android" ? 56 : 36);
+
   return (
     <View style={styles.safeArea}>
       <ScrollView
@@ -222,7 +224,7 @@ export default function EditExpenseScreen() {
         </View>
 
         {/* Content */}
-        <View style={styles.bottomCard}>
+        <View style={[styles.bottomCard, { paddingBottom: bottomInset }]}>
           <View style={styles.inputCard}>
             <Text style={styles.cardHeader}>EXPENSE DETAILS</Text>
 
@@ -238,7 +240,7 @@ export default function EditExpenseScreen() {
             </View>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>Total Amount ($)</Text>
+              <Text style={styles.label}>Total Amount (₹)</Text>
               <TextInput
                 value={amountText}
                 onChangeText={setAmountText}

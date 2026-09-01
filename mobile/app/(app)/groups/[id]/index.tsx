@@ -149,6 +149,8 @@ export default function GroupDetailScreen() {
     }
   }
 
+  const bottomInset = Math.max(insets.bottom + 24, Platform.OS === "android" ? 56 : 36);
+
   return (
     <View style={styles.safeArea}>
       <ScrollView
@@ -216,7 +218,7 @@ export default function GroupDetailScreen() {
         </View>
 
         {/* Bottom Details Card */}
-        <View style={styles.bottomCard}>
+        <View style={[styles.bottomCard, { paddingBottom: bottomInset }]}>
           {managementError ? (
             <Text style={styles.errorBanner}>{managementError}</Text>
           ) : null}

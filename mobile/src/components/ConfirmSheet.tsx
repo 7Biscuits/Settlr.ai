@@ -1,6 +1,7 @@
 import React from "react";
-import { Modal, ScrollView, Text, View } from "react-native";
+import { Modal, Pressable, ScrollView, Text, View } from "react-native";
 import { Button } from "./Button";
+
 
 interface Row {
   label: string;
@@ -12,6 +13,20 @@ interface Row {
  * The action is only performed by the caller's `onConfirm` (which calls the
  * backend); this component never assumes success.
  */
+interface ConfirmSheetProps {
+  visible: boolean;
+  title: string;
+  description?: string;
+  rows?: Row[];
+  confirmLabel?: string;
+  destructive?: boolean;
+  loading?: boolean;
+  muteTts?: boolean;
+  onToggleMuteTts?: (muted: boolean) => void;
+  onConfirm: () => void;
+  onCancel: () => void;
+}
+
 export function ConfirmSheet({
   visible,
   title,
@@ -20,19 +35,11 @@ export function ConfirmSheet({
   confirmLabel = "Confirm",
   destructive = false,
   loading = false,
+  muteTts,
+  onToggleMuteTts,
   onConfirm,
   onCancel,
-}: {
-  visible: boolean;
-  title: string;
-  description?: string;
-  rows?: Row[];
-  confirmLabel?: string;
-  destructive?: boolean;
-  loading?: boolean;
-  onConfirm: () => void;
-  onCancel: () => void;
-}) {
+}: ConfirmSheetProps) {
   return (
     <Modal
       visible={visible}
@@ -63,6 +70,20 @@ export function ConfirmSheet({
             </ScrollView>
           ) : null}
 
+          {onToggleMuteTts && (
+            <Pressable
+              onPress={() => onToggleMuteTts(!muteTts)}
+              className="mb-4 flex-row items-center justify-between rounded-xl border border-border bg-surface2 p-3 active:opacity-75"
+            >
+              <Text className="text-sm font-medium text-text">
+                {muteTts ? "🔇 Text to Speech Muted" : "🔊 Speak result after action"}
+              </Text>
+              <Text className={`text-xs font-bold ${muteTts ? "text-danger" : "text-primary"}`}>
+                {muteTts ? "MUTED" : "ON"}
+              </Text>
+            </Pressable>
+          )}
+
           <View className="gap-2">
             <Button
               title={confirmLabel}
@@ -77,3 +98,4 @@ export function ConfirmSheet({
     </Modal>
   );
 }
+

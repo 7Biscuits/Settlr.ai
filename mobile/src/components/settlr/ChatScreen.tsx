@@ -77,6 +77,7 @@ export function ChatScreen({ onOpenSettings }: ChatScreenProps) {
   const [loading, setLoading] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
   const [conversation, setConversation] = useState<unknown[] | undefined>();
+  const [isMuted, setIsMuted] = useState(false);
 
   // Sensitive action confirmation state
   const [pending, setPending] = useState<{
@@ -132,7 +133,7 @@ export function ChatScreen({ onOpenSettings }: ChatScreenProps) {
       ]);
     }
 
-    if (speakReply && reply.content) {
+    if (speakReply && reply.content && !isMuted) {
       try {
         await player.speak(reply.content);
       } catch {
@@ -140,6 +141,7 @@ export function ChatScreen({ onOpenSettings }: ChatScreenProps) {
       }
     }
   };
+
 
 
   const handleSend = async (customText?: string, speakReply = false) => {
@@ -285,12 +287,34 @@ export function ChatScreen({ onOpenSettings }: ChatScreenProps) {
           <View style={styles.headerStatus}>
             {player.speaking ? (
               <Pressable onPress={() => player.stop()} style={styles.speakingIndicator}>
-                <Ionicons name="volume-high" size={18} color="#2738F5" />
-                <Text style={styles.speakingText}>Playing voice… (tap to stop)</Text>
+                <Ionicons name="volume-mute" size={16} color="#DC2626" />
+                <Text style={styles.speakingText}>Speaking… (Tap to Mute 🔇)</Text>
               </Pressable>
             ) : null}
           </View>
           <View style={styles.headerActions}>
+            <Pressable
+              hitSlop={8}
+              onPress={() => {
+                setIsMuted((prev) => {
+                  const next = !prev;
+                  if (next && player.speaking) {
+                    player.stop();
+                  }
+                  return next;
+                });
+              }}
+              style={[styles.muteToggleButton, isMuted && styles.muteToggleActive]}>
+              <Ionicons
+                name={isMuted ? 'volume-mute' : 'volume-high'}
+                size={16}
+                color={isMuted ? '#DC2626' : '#2738F5'}
+              />
+              <Text style={[styles.muteToggleText, isMuted && styles.muteToggleActiveText]}>
+                {isMuted ? 'Muted' : 'Voice'}
+              </Text>
+            </Pressable>
+
             <Pressable onPress={onOpenSettings} style={styles.iconButton}>
               <Ionicons name="person-circle-outline" size={32} color="#0F172A" />
             </Pressable>
@@ -359,10 +383,22 @@ export function ChatScreen({ onOpenSettings }: ChatScreenProps) {
                     </Text>
                     {!msg.isError && (
                       <Pressable
-                        onPress={() => player.speak(msg.text)}
-                        style={styles.listenAgainButton}>
-                        <Ionicons name="volume-medium-outline" size={16} color="#64748B" />
-                        <Text style={styles.listenAgainText}>Listen</Text>
+                        onPress={() => {
+                          if (player.speaking) {
+                            player.stop();
+                          } else {
+                            player.speak(msg.text);
+                          }
+                        }}
+                        style={player.speaking ? styles.stopSpeakingButton : styles.listenAgainButton}>
+                        <Ionicons
+                          name={player.speaking ? 'volume-mute-outline' : 'volume-medium-outline'}
+                          size={16}
+                          color={player.speaking ? '#DC2626' : '#64748B'}
+                        />
+                        <Text style={player.speaking ? styles.stopSpeakingText : styles.listenAgainText}>
+                          {player.speaking ? 'Mute Voice 🔇' : 'Listen'}
+                        </Text>
                       </Pressable>
                     )}
                   </View>
@@ -370,6 +406,7 @@ export function ChatScreen({ onOpenSettings }: ChatScreenProps) {
               </View>
             ))
           )}
+
 
           {transcribing ? (
             <View style={styles.cleoMessageContainer}>
@@ -485,6 +522,8 @@ export function ChatScreen({ onOpenSettings }: ChatScreenProps) {
                 ]
               : []
           }
+          muteTts={isMuted}
+          onToggleMuteTts={setIsMuted}
           confirmLabel="Confirm & execute"
           loading={confirming}
           onConfirm={handleConfirmAction}
@@ -534,26 +573,52 @@ const styles = StyleSheet.create({
   headerStatus: {
     flex: 1,
   },
+  muteToggleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#EEF2FF',
+    borderWidth: 1,
+    borderColor: '#C7D2FE',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 14,
+  },
+  muteToggleActive: {
+    backgroundColor: '#FEE2E2',
+    borderColor: '#FECACA',
+  },
+  muteToggleText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#2738F5',
+  },
+  muteToggleActiveText: {
+    color: '#DC2626',
+  },
   speakingIndicator: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: '#EEF2FF',
+    backgroundColor: '#FEE2E2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
     paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingVertical: 5,
     borderRadius: 12,
     alignSelf: 'flex-start',
   },
   speakingText: {
     fontSize: 12,
-    color: '#2738F5',
-    fontWeight: '600',
+    color: '#DC2626',
+    fontWeight: '700',
   },
   headerActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 10,
   },
+
   iconButton: {
     position: 'relative',
     padding: 2,
@@ -628,6 +693,25 @@ const styles = StyleSheet.create({
     color: '#64748B',
     fontWeight: '600',
   },
+  stopSpeakingButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 8,
+    alignSelf: 'flex-start',
+    backgroundColor: '#FEE2E2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    paddingVertical: 3,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+  },
+  stopSpeakingText: {
+    fontSize: 12,
+    color: '#DC2626',
+    fontWeight: '700',
+  },
+
   loadingCard: {
     flexDirection: 'row',
     alignItems: 'center',

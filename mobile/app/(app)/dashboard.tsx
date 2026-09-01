@@ -143,22 +143,14 @@ export default function DashboardScreen() {
             <View style={{ width: containerWidth, height: "100%" }}>
               <BudgetScreen
                 onOpenSettings={openSettings}
-                onCreateGroup={() => router.push("/(app)/groups")}
-                onSettleDebt={() => setActiveTab("wallet")}
+                onSelectGroup={(groupId) => router.push(`/(app)/groups/${groupId}`)}
                 netBalance={
                   ((summary?.totalOwed ?? 0) - (summary?.totalOwing ?? 0)) / 100
                 }
                 totalOwed={(summary?.totalOwed ?? 0) / 100}
                 totalOwing={(summary?.totalOwing ?? 0) / 100}
-                groupDebts={
-                  summary?.balances?.map((b) => ({
-                    id: b.otherUserId,
-                    groupName: "Group Split",
-                    userOwes: b.netAmount < 0,
-                    amount: Math.abs(b.netAmount) / 100,
-                    otherMember: b.otherUserName,
-                  })) ?? []
-                }
+                groups={summary?.groups ?? []}
+                onRefreshGroups={loadData}
               />
             </View>
 

@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import {
+  ActivityIndicator,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -14,53 +16,66 @@ import Svg, { Path } from 'react-native-svg';
 import { SettlrMouth } from './illustrations/SettlrMouth';
 import { CoinStackIllustration } from './illustrations/CoinStackIllustration';
 import { ThumbsUpHand } from './illustrations/ThumbsUpHand';
-
-export interface GroupDebtItem {
-  id: string;
-  groupName: string;
-  userOwes: boolean;
-  amount: number;
-  otherMember: string;
-}
+import type { Group } from '../../api/types';
+import { createGroup } from '../../api/groups';
 
 interface BudgetScreenProps {
   onOpenSettings?: () => void;
-  onCreateGroup?: () => void;
-  onSettleDebt?: (debt: GroupDebtItem) => void;
+  onSelectGroup?: (groupId: string) => void;
   netBalance?: number;
   totalOwed?: number;
   totalOwing?: number;
-  groupDebts?: GroupDebtItem[];
+  groups?: Group[];
+  onRefreshGroups?: () => Promise<void> | void;
 }
 
 export function BudgetScreen({
   onOpenSettings,
-  onCreateGroup,
-  onSettleDebt,
+  onSelectGroup,
   netBalance = 0,
   totalOwed = 0,
   totalOwing = 0,
-  groupDebts = [],
+  groups = [],
+  onRefreshGroups,
 }: BudgetScreenProps) {
   const insets = useSafeAreaInsets();
   const topInset = Math.max(insets.top, Platform.OS === 'ios' ? 44 : 24);
   const [showInsightBanner, setShowInsightBanner] = useState(true);
+
+  // Quick Group Creation State
+  const [newGroupName, setNewGroupName] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
 
   const isNetNegative = netBalance < 0;
   const absNet = Math.abs(netBalance);
   const intPart = Math.floor(absNet);
   const decPart = (absNet % 1).toFixed(2).substring(1);
 
-  // Dynamic insight text derived from real database figures
-  const owedCount = groupDebts.filter((d) => !d.userOwes).length;
   let insightMessage = '';
   if (totalOwed > 0) {
-    insightMessage = `${owedCount} friend${owedCount > 1 ? 's' : ''} owe you ₹${totalOwed.toFixed(2)}. Want me to send friendly nudges? 💬`;
+    insightMessage = `You have ₹${totalOwed.toFixed(2)} receivable across your split groups. Want me to send friendly nudges? 💬`;
   } else if (totalOwing > 0) {
-    insightMessage = `You have outstanding debts of ₹${totalOwing.toFixed(2)}. Settle directly from your wallet! ⚡`;
+    insightMessage = `You have ₹${totalOwing.toFixed(2)} in shared group expenses to settle up! ⚡`;
   } else {
-    insightMessage = `All group debts are settled! You're completely up to date. 🎉`;
+    insightMessage = `All group balances are settled! You're completely up to date. 🎉`;
   }
+
+  const handleCreateGroup = async () => {
+    const trimmed = newGroupName.trim();
+    if (!trimmed) return;
+    setCreating(true);
+    setCreateError(null);
+    try {
+      await createGroup(trimmed);
+      setNewGroupName('');
+      await onRefreshGroups?.();
+    } catch (err: any) {
+      setCreateError(err?.message || 'Failed to create group');
+    } finally {
+      setCreating(false);
+    }
+  };
 
   return (
     <View style={styles.safeArea}>
@@ -175,59 +190,71 @@ export function BudgetScreen({
             </View>
           )}
 
-          {/* Group Debts / Outstanding Splits Section */}
-          <View style={styles.billsDueSection}>
-            <View style={styles.billsDueHeader}>
-              <Text style={styles.billsDueTitle}>OUTSTANDING SETTLEMENTS</Text>
-              <Pressable onPress={onCreateGroup} hitSlop={10}>
-                <Feather name="plus-circle" size={22} color="#2738F5" />
-              </Pressable>
+          {/* SETTLR GROUPS Section (Directly displays create form and active groups) */}
+          <View style={styles.groupsSection}>
+            <View style={styles.groupsSectionHeader}>
+              <Text style={styles.groupsSectionTitle}>SETTLR GROUPS</Text>
             </View>
 
-            {groupDebts.length === 0 ? (
-              <View style={styles.emptyDebtsBox}>
-                <Text style={styles.emptyDebtsTitle}>No outstanding debts 🎉</Text>
-                <Text style={styles.emptyDebtsSub}>
-                  You and your group members are fully settled up!
+            {/* Inline Group Creation Form (Previously after plus icon) */}
+            <View style={styles.createCard}>
+              <Text style={styles.createTitle}>CREATE NEW GROUP</Text>
+              <View style={styles.createInputRow}>
+                <TextInput
+                  value={newGroupName}
+                  onChangeText={(t) => {
+                    setNewGroupName(t);
+                    if (createError) setCreateError(null);
+                  }}
+                  placeholder="e.g. Goa Trip 🏖️ or Flat 302 🏠"
+                  placeholderTextColor="#94A3B8"
+                  style={styles.createTextInput}
+                />
+                <Pressable
+                  onPress={handleCreateGroup}
+                  disabled={creating || !newGroupName.trim()}
+                  style={[
+                    styles.createButton,
+                    (!newGroupName.trim() || creating) && styles.createButtonDisabled,
+                  ]}>
+                  {creating ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <Text style={styles.createButtonText}>Create 👉</Text>
+                  )}
+                </Pressable>
+              </View>
+              {createError ? <Text style={styles.errorText}>{createError}</Text> : null}
+            </View>
+
+            {/* Active Groups List */}
+            {groups.length === 0 ? (
+              <View style={styles.emptyGroupsBox}>
+                <Text style={styles.emptyGroupsTitle}>No groups yet 🏝️</Text>
+                <Text style={styles.emptyGroupsSub}>
+                  Enter a group name above to start splitting bills and settling debts with friends!
                 </Text>
               </View>
             ) : (
-              <View style={styles.debtsList}>
-                {groupDebts.map((item) => (
-                  <View key={item.id} style={styles.debtItemRow}>
-                    <View style={styles.debtLeft}>
-                      <View
-                        style={[
-                          styles.debtBadge,
-                          item.userOwes ? styles.debtBadgeOwe : styles.debtBadgeOwed,
-                        ]}>
-                        <Text style={styles.debtBadgeText}>
-                          {item.userOwes ? 'You Owe' : 'Owed'}
+              <View style={styles.groupsList}>
+                {groups.map((group) => (
+                  <Pressable
+                    key={group.id}
+                    onPress={() => onSelectGroup?.(group.id)}
+                    style={styles.groupCard}>
+                    <View style={styles.groupLeft}>
+                      <View style={styles.groupAvatar}>
+                        <Text style={styles.groupInitial}>
+                          {(group.name[0] || 'G').toUpperCase()}
                         </Text>
                       </View>
-                      <View style={styles.debtTextGroup}>
-                        <Text style={styles.debtGroupName}>{item.groupName}</Text>
-                        <Text style={styles.debtMember}>{item.otherMember}</Text>
+                      <View style={styles.groupInfo}>
+                        <Text style={styles.groupName}>{group.name}</Text>
+                        <Text style={styles.groupSub}>Tap to view balances & splits</Text>
                       </View>
                     </View>
-
-                    <View style={styles.debtRight}>
-                      <Text
-                        style={[
-                          styles.debtAmount,
-                          item.userOwes ? styles.debtOweAmount : styles.debtOwedAmount,
-                        ]}>
-                        ₹{item.amount.toFixed(2)}
-                      </Text>
-                      {item.userOwes && (
-                        <Pressable
-                          onPress={() => onSettleDebt?.(item)}
-                          style={styles.settleButton}>
-                          <Text style={styles.settleButtonText}>Settle</Text>
-                        </Pressable>
-                      )}
-                    </View>
-                  </View>
+                    <Feather name="chevron-right" size={20} color="#94A3B8" />
+                  </Pressable>
                 ))}
               </View>
             )}
@@ -345,7 +372,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 32,
     paddingTop: 32,
     paddingHorizontal: 20,
-    paddingBottom: 24,
+    paddingBottom: 28,
     position: 'relative',
     flex: 1,
     minHeight: 280,
@@ -435,114 +462,138 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  billsDueSection: {
+  groupsSection: {
     marginTop: 26,
     paddingBottom: 10,
   },
-  billsDueHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+  groupsSectionHeader: {
     paddingVertical: 4,
     marginBottom: 14,
   },
-  billsDueTitle: {
+  groupsSectionTitle: {
     color: '#000000',
     fontSize: 18,
     fontWeight: '900',
     letterSpacing: 0.5,
     textTransform: 'uppercase',
   },
-  emptyDebtsBox: {
+  createCard: {
+    backgroundColor: '#EFF6FF',
+    borderRadius: 18,
+    padding: 16,
+    borderWidth: 1.5,
+    borderColor: '#BFDBFE',
+    marginBottom: 18,
+    gap: 10,
+  },
+  createTitle: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: '#1E3A8A',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  createInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  createTextInput: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
+    borderColor: '#CBD5E1',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    height: 48,
+    fontSize: 15,
+    color: '#0F172A',
+    fontWeight: '600',
+  },
+  createButton: {
+    backgroundColor: '#2738F5',
+    borderRadius: 12,
+    height: 48,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  createButtonDisabled: {
+    backgroundColor: '#94A3B8',
+  },
+  createButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14.5,
+    fontWeight: '700',
+  },
+  errorText: {
+    color: '#DC2626',
+    fontSize: 12.5,
+    fontWeight: '600',
+  },
+  emptyGroupsBox: {
     backgroundColor: '#F8FAFC',
-    borderRadius: 16,
-    padding: 20,
+    borderRadius: 18,
+    padding: 24,
     alignItems: 'center',
     borderWidth: 1,
     borderColor: '#E2E8F0',
   },
-  emptyDebtsTitle: {
-    fontSize: 16,
-    fontWeight: '700',
+  emptyGroupsTitle: {
+    fontSize: 16.5,
+    fontWeight: '800',
     color: '#0F172A',
   },
-  emptyDebtsSub: {
+  emptyGroupsSub: {
     fontSize: 13.5,
     color: '#64748B',
-    marginTop: 4,
+    marginTop: 6,
     textAlign: 'center',
+    lineHeight: 19,
   },
-  debtsList: {
+  groupsList: {
     gap: 12,
   },
-  debtItemRow: {
+  groupCard: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     backgroundColor: '#F8FAFC',
-    borderRadius: 16,
-    padding: 12,
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: '#E2E8F0',
+    borderRadius: 18,
+    padding: 14,
   },
-  debtLeft: {
+  groupLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 14,
     flex: 1,
   },
-  debtBadge: {
-    borderRadius: 10,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+  groupAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#2738F5',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  debtBadgeOwe: {
-    backgroundColor: '#FEE2E2',
+  groupInitial: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '900',
   },
-  debtBadgeOwed: {
-    backgroundColor: '#DCFCE7',
-  },
-  debtBadgeText: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#0F172A',
-  },
-  debtTextGroup: {
+  groupInfo: {
     flex: 1,
   },
-  debtGroupName: {
-    fontSize: 15,
+  groupName: {
+    fontSize: 16,
     fontWeight: '700',
     color: '#0F172A',
   },
-  debtMember: {
+  groupSub: {
     fontSize: 12.5,
     color: '#64748B',
-    marginTop: 1,
-  },
-  debtRight: {
-    alignItems: 'flex-end',
-    gap: 4,
-  },
-  debtAmount: {
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  debtOweAmount: {
-    color: '#DC2626',
-  },
-  debtOwedAmount: {
-    color: '#059669',
-  },
-  settleButton: {
-    backgroundColor: '#2738F5',
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-  },
-  settleButtonText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '700',
+    marginTop: 2,
   },
 });

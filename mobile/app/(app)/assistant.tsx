@@ -68,6 +68,7 @@ export default function AssistantScreen() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [conversation, setConversation] = useState<unknown[] | undefined>();
+  const [isMuted, setIsMuted] = useState(false);
 
   // Backend-proposed sensitive action awaiting confirmation.
   const [pending, setPending] = useState<{
@@ -139,10 +140,15 @@ export default function AssistantScreen() {
     } else {
       pushAssistant(reply.content);
     }
-    if (speakReply && reply.content) {
-      await player.speak(reply.content);
+    if (speakReply && reply.content && !isMuted) {
+      try {
+        await player.speak(reply.content);
+      } catch {
+        // Voice playback handled
+      }
     }
   }
+
 
   /**
    * Confirms a pending sensitive action. After the backend executes it and
@@ -208,12 +214,31 @@ export default function AssistantScreen() {
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
     >
-      <View className="border-b border-border p-4">
-        <Text className="text-2xl font-bold text-text">Assistant</Text>
-        <Text className="text-sm text-muted">
-          Try: "Add Alice and Bob to a group and split ₹200 for lunch"
-        </Text>
+      <View className="border-b border-border p-4 flex-row items-center justify-between">
+        <View>
+          <Text className="text-2xl font-bold text-text">Assistant</Text>
+          <Text className="text-sm text-muted">
+            Try: "Add Alice and Bob to a group and split ₹200 for lunch"
+          </Text>
+        </View>
+        <Pressable
+          onPress={() => {
+            setIsMuted((prev) => {
+              const next = !prev;
+              if (next && player.speaking) player.stop();
+              return next;
+            });
+          }}
+          className={`px-3 py-1.5 rounded-xl border flex-row items-center gap-1.5 ${
+            isMuted ? "bg-red-50 border-red-200" : "bg-blue-50 border-blue-200"
+          }`}
+        >
+          <Text className="text-xs font-bold text-text">
+            {isMuted ? "🔇 TTS Muted" : "🔊 TTS On"}
+          </Text>
+        </Pressable>
       </View>
+
 
       <ScrollView
         ref={scrollRef}
@@ -307,11 +332,14 @@ export default function AssistantScreen() {
               ]
             : []
         }
+        muteTts={isMuted}
+        onToggleMuteTts={setIsMuted}
         confirmLabel="Confirm & execute"
         loading={confirming}
         onConfirm={handleConfirm}
         onCancel={() => setPending(null)}
       />
     </KeyboardAvoidingView>
+
   );
 }

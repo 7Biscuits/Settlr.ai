@@ -31,6 +31,24 @@ export async function buildApp(): Promise<FastifyInstance> {
   });
   await app.register(jwt, { secret: env.JWT_SECRET });
 
+  // Handle empty JSON bodies gracefully without throwing FST_ERR_CTP_EMPTY_JSON_BODY
+  app.addContentTypeParser(
+    "application/json",
+    { parseAs: "string" },
+    (req, body: string, done) => {
+      if (!body || body.trim() === "") {
+        return done(null, {});
+      }
+      try {
+        const json = JSON.parse(body);
+        done(null, json);
+      } catch (err) {
+        done(err as Error, undefined);
+      }
+    },
+  );
+
+
   // Lightweight baseline headers without an additional dependency. The API is
   // JSON-only, so a restrictive CSP is unnecessary here.
   app.addHook("onSend", async (_request, reply, payload) => {

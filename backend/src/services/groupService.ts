@@ -276,22 +276,49 @@ export async function inviteOrAddMemberByEmail(
 export async function inviteOrAddMemberByContact(
   groupId: string,
   requesterId: string,
-  contact: { email?: string; phone?: string; query?: string },
+  contact: {
+    userId?: string;
+    email?: string;
+    phone?: string;
+    query?: string;
+    name?: string;
+  },
 ): Promise<InviteOrAddResult> {
   await assertOwner(groupId, requesterId);
 
-  // Try name-based lookup first (fuzzy matching)
-  if (contact.query) {
-    const q = contact.query.trim();
+  // 1. Direct userId resolution
+  if (contact.userId) {
+    const [user] = await db.select().from(users).where(eq(users.id, contact.userId));
+    if (user) {
+      if (await isMember(groupId, user.id)) {
+        return {
+          kind: "member_added",
+          member: { id: user.id, name: user.name, email: user.email },
+        };
+      }
+      await db.insert(groupMembers).values({ groupId, userId: user.id }).onConflictDoNothing();
+      return {
+        kind: "member_added",
+        member: { id: user.id, name: user.name, email: user.email },
+      };
+    }
+  }
+
+  // 2. Name-based lookup (fuzzy matching)
+  const nameQuery = (contact.query || contact.name || "").trim();
+  if (nameQuery) {
     const [user] = await db
       .select()
       .from(users)
-      .where(ilike(users.name, `%${q}%`));
+      .where(ilike(users.name, `%${nameQuery}%`));
     if (user) {
       if (await isMember(groupId, user.id)) {
-        throw new ConflictError("User is already a member");
+        return {
+          kind: "member_added",
+          member: { id: user.id, name: user.name, email: user.email },
+        };
       }
-      await db.insert(groupMembers).values({ groupId, userId: user.id });
+      await db.insert(groupMembers).values({ groupId, userId: user.id }).onConflictDoNothing();
       return {
         kind: "member_added",
         member: { id: user.id, name: user.name, email: user.email },
@@ -300,19 +327,23 @@ export async function inviteOrAddMemberByContact(
     // If name lookup fails and no email/phone fallback, report it
     if (!contact.email && !contact.phone) {
       throw new ValidationError(
-        `No registered user found matching "${q}". Try providing their email address to send an invitation.`,
+        `No registered user found matching "${nameQuery}". Try providing their email address to send an invitation.`,
       );
     }
   }
 
+  // 3. Phone lookup
   if (contact.phone) {
     const normPhone = contact.phone.trim();
     const [user] = await db.select().from(users).where(eq(users.phone, normPhone));
     if (user) {
       if (await isMember(groupId, user.id)) {
-        throw new ConflictError("User is already a member");
+        return {
+          kind: "member_added",
+          member: { id: user.id, name: user.name, email: user.email },
+        };
       }
-      await db.insert(groupMembers).values({ groupId, userId: user.id });
+      await db.insert(groupMembers).values({ groupId, userId: user.id }).onConflictDoNothing();
       return {
         kind: "member_added",
         member: { id: user.id, name: user.name, email: user.email },
@@ -320,6 +351,7 @@ export async function inviteOrAddMemberByContact(
     }
   }
 
+  // 4. Email lookup / invitation
   if (contact.email) {
     return inviteOrAddMemberByEmail(groupId, requesterId, contact.email);
   }
@@ -328,6 +360,56 @@ export async function inviteOrAddMemberByContact(
     "No registered user found with that contact info. Please provide their email to send an invitation.",
   );
 }
+
+export async function addMultipleMembersToGroup(
+  groupId: string,
+  requesterId: string,
+  members: string[],
+): Promise<{
+  added: Array<{ id: string; name: string; email: string }>;
+  invitations: InvitationDetails[];
+  message: string;
+}> {
+  await assertOwner(groupId, requesterId);
+  const added: Array<{ id: string; name: string; email: string }> = [];
+  const invitations: InvitationDetails[] = [];
+
+  for (const m of members) {
+    const item = m.trim();
+    if (!item) continue;
+    try {
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(item);
+      const isEmail = item.includes("@");
+      const isPhone = /^\+?[0-9\s\-()]{7,}$/.test(item);
+
+      const res = await inviteOrAddMemberByContact(groupId, requesterId, {
+        userId: isUuid ? item : undefined,
+        email: isEmail ? item : undefined,
+        phone: isPhone && !isEmail ? item : undefined,
+        query: !isUuid && !isEmail ? item : undefined,
+      });
+
+      if (res.kind === "member_added") {
+        added.push(res.member);
+      } else {
+        invitations.push(res.invitation);
+      }
+    } catch {
+      if (item.includes("@")) {
+        const inv = await inviteOrAddMemberByEmail(groupId, requesterId, item);
+        if (inv.kind === "member_added") added.push(inv.member);
+        else invitations.push(inv.invitation);
+      }
+    }
+  }
+
+  return {
+    added,
+    invitations,
+    message: `Added ${added.length} member(s) and created ${invitations.length} invitation(s).`,
+  };
+}
+
 
 
 export async function listGroupInvitations(

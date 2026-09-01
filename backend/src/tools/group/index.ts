@@ -66,32 +66,81 @@ export const deleteGroupTool: ToolDefinition = {
 
 export const addFriendTool: ToolDefinition = {
   name: "invite_to_group",
-  description: "Add or invite a user to a group. You can provide their email, phone number, or just their name (query). When using query (name), the tool looks up the user and adds them directly if found. If providing email for an unregistered user, it creates an invitation link.",
+  description:
+    "Add or invite one or more users to a group. You can provide a single user via query (name), userId, email, or phone — OR provide a list of members via the members array (e.g. ['Alice', 'Ethan']).",
   inputSchema: z
     .object({
       groupId: z.string().uuid(),
-      email: z.string().email().optional(),
-      phone: z.string().min(3).max(32).optional(),
-      query: z.string().min(1).max(120).optional(),
+      userId: z.string().optional(),
+      user_id: z.string().optional(),
+      email: z.string().optional(),
+      phone: z.string().optional(),
+      query: z.string().optional(),
+      name: z.string().optional(),
+      members: z.array(z.string()).optional(),
     })
-    .refine((data) => Boolean(data.email || data.phone || data.query), {
-      message: "Either email, phone, or query (name) must be provided to add or invite a member",
-    }),
+    .refine(
+      (data) =>
+        Boolean(
+          data.userId ||
+            data.user_id ||
+            data.email ||
+            data.phone ||
+            data.query ||
+            data.name ||
+            (data.members && data.members.length > 0),
+        ),
+      {
+        message:
+          "Provide userId, email, phone, query (name), or a list of members to add.",
+      },
+    ),
   sensitive: true,
   async execute(input, ctx) {
-    const { groupId, email, phone, query } = input as {
-      groupId: string;
-      email?: string;
-      phone?: string;
-      query?: string;
-    };
-    const result = await inviteOrAddMemberByContact(groupId, ctx.userId, {
+    const {
+      groupId,
+      userId,
+      user_id,
       email,
       phone,
       query,
+      name,
+      members,
+    } = input as {
+      groupId: string;
+      userId?: string;
+      user_id?: string;
+      email?: string;
+      phone?: string;
+      query?: string;
+      name?: string;
+      members?: string[];
+    };
+
+    if (Array.isArray(members) && members.length > 0) {
+      const { addMultipleMembersToGroup } = await import(
+        "../../services/groupService.js"
+      );
+      const result = await addMultipleMembersToGroup(
+        groupId,
+        ctx.userId,
+        members,
+      );
+      return { success: true, data: result };
+    }
+
+    const resolvedUserId = userId || user_id;
+    const resolvedQuery = query || name;
+
+    const result = await inviteOrAddMemberByContact(groupId, ctx.userId, {
+      userId: resolvedUserId,
+      email,
+      phone,
+      query: resolvedQuery,
     });
     return { success: true, data: result };
   },
 };
+
 
 

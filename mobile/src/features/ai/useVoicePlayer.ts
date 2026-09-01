@@ -1,15 +1,22 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Audio } from "expo-av";
-import * as FileSystem from "expo-file-system/legacy";
+import * as FileSystem from "expo-file-system";
 import { synthesize } from "../../api/voice";
 
+function getAudioModule() {
+  try {
+    const av = require("expo-av");
+    return av.Audio || av.default?.Audio || null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Fetches Deepgram TTS audio through the backend, writes only a short-lived
  * cache file, and plays it locally. API keys never enter the mobile bundle.
  */
 export function useVoicePlayer() {
-  const soundRef = useRef<Audio.Sound | null>(null);
+  const soundRef = useRef<any>(null);
   const fileRef = useRef<string | null>(null);
   const [speaking, setSpeaking] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -19,8 +26,16 @@ export function useVoicePlayer() {
     const file = fileRef.current;
     soundRef.current = null;
     fileRef.current = null;
-    if (sound) await sound.unloadAsync();
-    if (file) await FileSystem.deleteAsync(file, { idempotent: true });
+    try {
+      if (sound) await sound.unloadAsync();
+    } catch {
+      // Ignore unload error
+    }
+    try {
+      if (file) await FileSystem.deleteAsync(file, { idempotent: true });
+    } catch {
+      // Ignore file delete error
+    }
     setSpeaking(false);
   }, []);
 
@@ -30,21 +45,28 @@ export function useVoicePlayer() {
       setError(null);
       setSpeaking(true);
       try {
+        const Audio = getAudioModule();
+        if (!Audio) {
+          setError("Voice playback is not supported in this runtime environment.");
+          setSpeaking(false);
+          return;
+        }
+
         await stop();
         setSpeaking(true);
         const { audioBase64 } = await synthesize(text);
-        const directory = FileSystem.cacheDirectory;
+        const directory = (FileSystem as any).cacheDirectory;
         if (!directory) throw new Error("No cache directory is available for audio playback");
         const uri = `${directory}paypilot-tts-${Date.now()}.mp3`;
-        await FileSystem.writeAsStringAsync(uri, audioBase64, {
-          encoding: FileSystem.EncodingType.Base64,
+        await (FileSystem as any).writeAsStringAsync(uri, audioBase64, {
+          encoding: (FileSystem as any).EncodingType?.Base64 || "base64",
         });
         fileRef.current = uri;
         await Audio.setAudioModeAsync({
           allowsRecordingIOS: false,
           playsInSilentModeIOS: true,
         });
-        let activeSound: Audio.Sound | null = null;
+        let activeSound: any = null;
         const created = await Audio.Sound.createAsync(
           { uri },
           { shouldPlay: true },

@@ -256,8 +256,8 @@ export default function AssistantScreen() {
       // LLM/STT provider from the client.
       setLoading(true);
       try {
-        const audioBase64 = await FileSystem.readAsStringAsync(uri, {
-          encoding: FileSystem.EncodingType.Base64,
+        const audioBase64 = await (FileSystem as any).readAsStringAsync(uri, {
+          encoding: (FileSystem as any).EncodingType?.Base64 || "base64",
         });
         const mimeType = mimeTypeForUri(uri);
         const { text } = await transcribe(audioBase64, mimeType);

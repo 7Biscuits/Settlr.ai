@@ -1,5 +1,13 @@
 import { useCallback, useRef, useState } from "react";
-import { Audio } from "expo-av";
+
+function getAudioModule() {
+  try {
+    const av = require("expo-av");
+    return av.Audio || av.default?.Audio || null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Records a short voice clip using expo-av. Speech-to-text transcription is a
@@ -9,13 +17,18 @@ import { Audio } from "expo-av";
  * demand.
  */
 export function useVoiceRecorder() {
-  const recordingRef = useRef<Audio.Recording | null>(null);
+  const recordingRef = useRef<any>(null);
   const [recording, setRecording] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const start = useCallback(async () => {
     setError(null);
     try {
+      const Audio = getAudioModule();
+      if (!Audio) {
+        setError("Voice recording is not supported in this runtime environment.");
+        return false;
+      }
       const perm = await Audio.requestPermissionsAsync();
       if (!perm.granted) {
         setError("Microphone permission is required for voice commands.");

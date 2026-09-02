@@ -48,12 +48,6 @@ export async function apiFetch<T>(
     );
   }
 
-  if (res.status === 401) {
-    await clearToken();
-    onUnauthorized?.();
-    throw new ApiError(401, "Your session has expired. Please log in again.");
-  }
-
   if (!res.ok) {
     let message = `Request failed (${res.status})`;
     try {
@@ -65,8 +59,22 @@ export async function apiFetch<T>(
     } catch {
       // response had no JSON body
     }
+
+    if (res.status === 401) {
+      const isAuthRoute =
+        path.startsWith("/auth/login") || path.startsWith("/auth/register");
+      if (!isAuthRoute) {
+        await clearToken();
+        onUnauthorized?.();
+        if (!message || message.includes("Request failed")) {
+          message = "Your session has expired. Please log in again.";
+        }
+      }
+    }
+
     throw new ApiError(res.status, message);
   }
+
 
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;

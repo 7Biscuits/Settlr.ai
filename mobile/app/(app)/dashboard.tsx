@@ -68,7 +68,8 @@ export default function DashboardScreen() {
 
   useEffect(() => {
     loadData();
-  }, [loadData]);
+  }, [loadData, activeTab]);
+
 
   const activeIndex = TAB_KEYS.indexOf(activeTab);
   const translateX = useSharedValue(0);

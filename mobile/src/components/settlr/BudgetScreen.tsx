@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -17,7 +18,7 @@ import { SettlrMouth } from './illustrations/SettlrMouth';
 import { CoinStackIllustration } from './illustrations/CoinStackIllustration';
 import { ThumbsUpHand } from './illustrations/ThumbsUpHand';
 import type { Group } from '../../api/types';
-import { createGroup } from '../../api/groups';
+import { createGroup, listGroups } from '../../api/groups';
 
 interface BudgetScreenProps {
   onOpenSettings?: () => void;
@@ -42,10 +43,37 @@ export function BudgetScreen({
   const topInset = Math.max(insets.top, Platform.OS === 'ios' ? 44 : 24);
   const [showInsightBanner, setShowInsightBanner] = useState(true);
 
+  // Group List State - sync with props and remote
+  const [groupList, setGroupList] = useState<Group[]>(groups);
+  const [refreshing, setRefreshing] = useState(false);
+
   // Quick Group Creation State
   const [newGroupName, setNewGroupName] = useState('');
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+
+  // Synchronize when parent passes updated groups
+  useEffect(() => {
+    if (groups && groups.length > 0) {
+      setGroupList(groups);
+    }
+  }, [groups]);
+
+  // Direct fetch to guarantee up-to-date groups list
+  const fetchGroups = useCallback(async () => {
+    try {
+      const res = await listGroups();
+      if (res?.groups) {
+        setGroupList(res.groups);
+      }
+    } catch {
+      // Graceful fallback to existing groups
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchGroups();
+  }, [fetchGroups]);
 
   const isNetNegative = netBalance < 0;
   const absNet = Math.abs(netBalance);
@@ -67,8 +95,13 @@ export function BudgetScreen({
     setCreating(true);
     setCreateError(null);
     try {
-      await createGroup(trimmed);
+      const res = await createGroup(trimmed);
       setNewGroupName('');
+      if (res?.group) {
+        // Optimistically show the newly created group immediately
+        setGroupList((prev) => [res.group, ...prev.filter((g) => g.id !== res.group.id)]);
+      }
+      await fetchGroups();
       await onRefreshGroups?.();
     } catch (err: any) {
       setCreateError(err?.message || 'Failed to create group');
@@ -77,13 +110,28 @@ export function BudgetScreen({
     }
   };
 
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await Promise.all([fetchGroups(), onRefreshGroups?.()]);
+    setRefreshing(false);
+  };
+
+
   return (
     <View style={styles.safeArea}>
       <ScrollView
-        bounces={false}
+        bounces={true}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}>
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor="#00F58D"
+          />
+        }>
         {/* Top Blue Header Section */}
+
         <View style={[styles.topSection, { paddingTop: topInset + 4 }]}>
           {/* Header Title & Settings Row */}
           <View style={styles.headerRow}>
@@ -228,7 +276,7 @@ export function BudgetScreen({
             </View>
 
             {/* Active Groups List */}
-            {groups.length === 0 ? (
+            {groupList.length === 0 ? (
               <View style={styles.emptyGroupsBox}>
                 <Text style={styles.emptyGroupsTitle}>No groups yet 🏝️</Text>
                 <Text style={styles.emptyGroupsSub}>
@@ -237,7 +285,7 @@ export function BudgetScreen({
               </View>
             ) : (
               <View style={styles.groupsList}>
-                {groups.map((group) => (
+                {groupList.map((group) => (
                   <Pressable
                     key={group.id}
                     onPress={() => onSelectGroup?.(group.id)}
@@ -258,6 +306,7 @@ export function BudgetScreen({
                 ))}
               </View>
             )}
+
           </View>
         </View>
       </ScrollView>
